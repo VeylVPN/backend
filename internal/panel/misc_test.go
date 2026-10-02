@@ -133,3 +133,17 @@ func TestSetupLink(t *testing.T) {
 		t.Fatal("links")
 	}
 }
+
+func TestPanelCopyRules(t *testing.T) {
+	for _, name := range []string{"app.html", "setup.html", "app.js", "setup.js", "control.css"} {
+		b, err := webFS.ReadFile("web/" + name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, bad := range []string{"—", "–", "…", "eyebrow", "style=", "<script>", "/*", "<!--"} {
+			if strings.Contains(string(b), bad) {
+				t.Errorf("%s contains %q", name, bad)
+			}
+		}
+	}
+}

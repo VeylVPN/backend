@@ -630,26 +630,26 @@
     l.remove();
     if (!r.ok) { body.append(B.callout("danger", "", r.error)); return; }
     if (!r.data.accounts.length) { body.append(emptyState("No accounts on this node yet.")); return; }
-    const tb = h("tbody");
+    const list = h("div", { class: "list" });
     r.data.accounts.forEach((a) => {
       const name = a.label || "Account " + a.id.slice(0, 4).toUpperCase();
       const st = a.status === "disabled" ? ["badge-danger", "Paused"] : a.status === "expired" ? ["badge-warn", "Expired"] : ["badge-ok", "Active"];
-      const acts = h("div", { class: "cluster cluster-tight" });
+      const acts = h("div", { class: "list-item-actions" });
       if (can(2)) {
         acts.append(
-          B.button("", { variant: "quiet", size: "sm", icon: "phone", aria: "Devices of " + name, async: false, onClick: () => devices(id, a, name) }),
-          B.button("", { variant: "quiet", size: "sm", icon: a.disabled ? "play" : "pause", aria: (a.disabled ? "Resume " : "Pause ") + name, onClick: async () => {
+          B.button("Devices", { variant: "quiet", size: "sm", icon: "phone", aria: "Devices of " + name, async: false, onClick: () => devices(id, a, name) }),
+          B.button(a.disabled ? "Resume" : "Pause", { variant: "quiet", size: "sm", icon: a.disabled ? "play" : "pause", aria: (a.disabled ? "Resume " : "Pause ") + name, onClick: async () => {
             const x = await api("PATCH", nodeAPI(id) + "accounts/" + a.id, { disabled: !a.disabled });
             if (!x.ok) { B.toast(x.error, "err"); return; }
             route();
           } }),
-          B.button("", { variant: "quiet", size: "sm", icon: "clock", aria: "Expire " + name + " now", onClick: async () => {
+          B.button("Expire", { variant: "quiet", size: "sm", icon: "clock", aria: "Expire " + name + " now", onClick: async () => {
             if (!(await B.confirm("Expire " + name + " today?", "Its devices stop connecting. You can extend it again later.", "Expire"))) return;
             const x = await api("PATCH", nodeAPI(id) + "accounts/" + a.id, { expires_days: 0, disabled: true });
             if (!x.ok) { B.toast(x.error, "err"); return; }
             route();
           } }),
-          B.button("", { variant: "quiet", size: "sm", icon: "trash", aria: "Delete " + name, onClick: async () => {
+          B.button("Delete", { variant: "quiet", size: "sm", icon: "trash", aria: "Delete " + name, onClick: async () => {
             if (!(await B.confirm("Delete " + name + "?", "All of its devices are revoked right away. This cannot be undone.", "Delete", true))) return;
             const x = await api("DELETE", nodeAPI(id) + "accounts/" + a.id);
             if (!x.ok) { B.toast(x.error, "err"); return; }
@@ -658,16 +658,13 @@
           } })
         );
       }
-      tb.append(h("tr", null,
-        h("td", { class: "is-strong", text: name }),
-        h("td", null, h("span", { class: "badge " + st[0], text: st[1] })),
-        h("td", { class: "is-num", text: a.devices + " of " + a.max_devices }),
-        h("td", { class: "text-sm", text: a.expires ? B.date(a.expires) : "Never" }),
-        h("td", null, acts)
-      ));
+      list.append(h("div", { class: "list-item is-stacked" },
+        h("div", { class: "grow stack stack-xs" },
+          h("div", { class: "cluster" }, h("span", { class: "list-item-title", text: name }), h("span", { class: "badge " + st[0], text: st[1] })),
+          h("span", { class: "list-item-meta", text: a.devices + " of " + a.max_devices + " devices, " + (a.online ? a.online + " online, " : "") + (a.expires ? "expires " + B.date(a.expires) : "never expires") })),
+        acts));
     });
-    body.append(card("card-flush surface-panel", h("div", { class: "table-wrap" }, h("table", { class: "table" },
-      h("thead", null, h("tr", null, ...["Account", "Status", "Devices", "Expires", ""].map((x) => h("th", { scope: "col", text: x })))), tb))));
+    body.append(card("card-flush surface-panel", list));
   }
 
   async function devices(id, a, name) {
@@ -755,8 +752,9 @@
     body.append(
       card("card-flush surface-panel", head("Server"), h("div", { class: "card-body stack" }, B.field("Name", name), B.settingRow("Who can join", "", reg), B.settingRow("Devices per account", "", limit.el), stealth.row, upd.row)),
       card("card-flush surface-panel", head("Blocked by default"), h("div", { class: "card-body" }, cats)),
-      err, save ? h("div", { class: "cluster" }, save) : null
+      err
     );
+    if (save) body.append(h("div", { class: "cluster" }, save));
   }
 
   function incidentList(list, withNode) {
@@ -881,7 +879,7 @@
     const evs = h("div", { class: "stack stack-sm" });
     cfg.kinds.forEach((k) => evs.append(B.setting(k.label, "", !!ev[k.kind], { onChange: (v) => { ev[k.kind] = v; } }).row));
     const sm = cfg.smtp;
-    const smtpOn = B.setting("Email", "Sent over TLS or STARTTLS only. The password is encrypted on disk.", sm.enabled, { icon: "globe" });
+    const smtpOn = B.setting("Send alerts by email", "Sent over TLS or STARTTLS only. The password is encrypted on disk.", sm.enabled, { icon: "globe" });
     const host = B.input({ value: sm.host, placeholder: "smtp.example.com" });
     const port = B.input({ value: String(sm.port || 587), inputmode: "numeric" });
     const sec = B.select([["starttls", "STARTTLS"], ["tls", "TLS"]], sm.security || "starttls");
@@ -927,7 +925,7 @@
     drawHooks();
     const hookCard = card("card-flush surface-panel", head("Webhooks", B.button("Add webhook", { variant: "secondary", size: "sm", icon: "plus", async: false, onClick: () => { if (hooks.length < 8) { hooks.push({ enabled: true, format: "json" }); drawHooks(); } } })), h("div", { class: "card-body" }, hookList));
     const nt = cfg.ntfy;
-    const ntOn = B.setting("ntfy", "Push notifications to your phone through an ntfy server.", nt.enabled, { icon: "phone" });
+    const ntOn = B.setting("Send push notifications", "Push notifications to your phone through an ntfy server.", nt.enabled, { icon: "phone" });
     const ntServer = B.input({ value: nt.server || "https://ntfy.sh" });
     const ntTopic = B.input({ value: nt.topic, placeholder: "veyl-a8f3k2", mono: true });
     const ntToken = B.input({ type: "password", placeholder: nt.token_set ? "Saved. Type to replace." : "Optional", autocomplete: "new-password" });
@@ -946,15 +944,15 @@
       B.toast("Alerts saved");
       alerts();
     } });
-    p.body.append(card("card-flush surface-panel", head("When to alert"), h("div", { class: "card-body" }, evs)), email, hookCard, ntCard, err, h("div", { class: "cluster" }, save),
-      cfg.dropped ? h("p", { class: "text-sm text-subtle", text: cfg.dropped + " alerts were held back by the hourly limit." }) : null);
+    p.body.append(card("card-flush surface-panel", head("When to alert"), h("div", { class: "card-body" }, evs)), email, hookCard, ntCard, err, h("div", { class: "cluster" }, save));
+    if (cfg.dropped) p.body.append(h("p", { class: "text-sm text-subtle", text: cfg.dropped + " alerts were held back by the hourly limit." }));
   }
 
   async function team() {
     const p = pageShell(["Team", "and roles."], "Owners manage everything. Admins manage nodes and alerts. Viewers can only look. Everyone uses two-step sign in.", B.button("Invite someone", { icon: "plus", async: false, onClick: invite }));
     const r = await api("GET", "api/team");
     if (!r.ok || page !== "team") return;
-    const tb = h("tbody");
+    const ulist = h("div", { class: "list" });
     r.data.users.forEach((u) => {
       const role = B.select([["owner", "Owner"], ["admin", "Admin"], ["viewer", "Viewer"]], u.role);
       role.setAttribute("aria-label", "Role of " + u.username);
@@ -963,26 +961,25 @@
         B.toast(x.ok ? "Role changed" : x.error, x.ok ? "" : "err");
         if (!x.ok) role.value = u.role;
       });
-      tb.append(h("tr", null,
-        h("td", { class: "is-strong", text: u.username + (u.id === sess.user.id ? " (you)" : "") }),
-        h("td", null, role),
-        h("td", null, h("span", { class: "badge " + (u.two_factor ? "badge-ok" : "badge-warn"), text: u.two_factor ? "On" : "Pending" })),
-        h("td", { class: "text-sm", text: u.last_login ? ago(u.last_login) : "Never" }),
-        h("td", null, u.id === sess.user.id ? null : h("div", { class: "cluster cluster-tight" },
-          B.button("", { variant: "quiet", size: "sm", icon: "key", aria: "Reset two-step sign in for " + u.username, onClick: async () => {
+      const me = u.id === sess.user.id;
+      ulist.append(h("div", { class: "list-item is-stacked" },
+        h("div", { class: "grow stack stack-xs" },
+          h("div", { class: "cluster" }, h("span", { class: "list-item-title", text: u.username + (me ? " (you)" : "") }), h("span", { class: "badge " + (u.two_factor ? "badge-ok" : "badge-warn"), text: u.two_factor ? "Two-step on" : "Two-step pending" })),
+          h("span", { class: "list-item-meta", text: "Last sign in " + (u.last_login ? ago(u.last_login) : "never") + ", " + u.sessions + " active " + (u.sessions === 1 ? "session" : "sessions") })),
+        h("div", { class: "list-item-actions" }, me ? h("span", { class: "badge badge-violet", text: u.role }) : role,
+          me ? null : B.button("Reset two-step", { variant: "quiet", size: "sm", icon: "key", aria: "Reset two-step sign in for " + u.username, onClick: async () => {
             if (!(await B.confirm("Reset two-step sign in?", u.username + " sets up a new authenticator at the next sign in.", "Reset"))) return;
             const x = await api("POST", "api/team/users/" + u.id + "/reset-2fa", {});
             B.toast(x.ok ? "Reset" : x.error, x.ok ? "" : "err");
           } }),
-          B.button("", { variant: "quiet", size: "sm", icon: "trash", aria: "Remove " + u.username, onClick: async () => {
+          me ? null : B.button("Remove", { variant: "quiet", size: "sm", icon: "trash", aria: "Remove " + u.username, onClick: async () => {
             if (!(await B.confirm("Remove " + u.username + "?", "They are signed out everywhere right away.", "Remove", true))) return;
             const x = await api("DELETE", "api/team/users/" + u.id);
             if (!x.ok) { B.toast(x.error, "err"); return; }
             team();
-          } })))
-      ));
+          } }))));
     });
-    p.body.append(card("card-flush surface-panel", h("div", { class: "table-wrap" }, h("table", { class: "table" }, h("thead", null, h("tr", null, ...["Person", "Role", "Two-step", "Last sign in", ""].map((x) => h("th", { scope: "col", text: x })))), tb))));
+    p.body.append(card("card-flush surface-panel", ulist));
     if (r.data.invites.length) {
       const list = h("div", { class: "list" });
       r.data.invites.forEach((iv) => list.append(h("div", { class: "list-item" }, icon("ticket"), h("span", { class: "grow", text: (iv.note || "Invite") + ", " + iv.role }), h("span", { class: "text-sm text-subtle", text: "Until " + when(iv.expires) }),
