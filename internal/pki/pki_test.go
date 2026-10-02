@@ -35,11 +35,14 @@ func newCA(t *testing.T) (*CA, string) {
 
 func TestInitFiles(t *testing.T) {
 	ca, dir := newCA(t)
-	for _, f := range []string{CAKeyFile, ServerKeyFile, TLSCryptFile} {
+	for f, perm := range map[string]os.FileMode{CAKeyFile: 0o600, ServerKeyFile: 0o600, TLSCryptV2File: 0o640} {
 		fi, err := os.Stat(filepath.Join(dir, f))
-		if err != nil || fi.Mode().Perm() != 0o600 {
+		if err != nil || fi.Mode().Perm() != perm {
 			t.Errorf("%s: %v %v", f, fi, err)
 		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, "tls-crypt.key")); err == nil {
+		t.Error("legacy tls-crypt v1 key generated")
 	}
 	for _, f := range []string{CAFile, ServerCertFile, CRLFile} {
 		if _, err := os.Stat(filepath.Join(dir, f)); err != nil {
@@ -69,16 +72,58 @@ func TestInitFiles(t *testing.T) {
 	}
 }
 
-func TestTLSCryptFormat(t *testing.T) {
-	ca, _ := newCA(t)
-	lines := strings.Split(strings.TrimSpace(string(ca.TLSCrypt())), "\n")
-	if len(lines) != 18 || lines[0] != "-----BEGIN OpenVPN Static key V1-----" || lines[17] != "-----END OpenVPN Static key V1-----" {
-		t.Fatalf("bad format: %d lines", len(lines))
+func TestTLSCryptV2Client(t *testing.T) {
+	ca, dir := newCA(t)
+	srv, err := os.ReadFile(filepath.Join(dir, TLSCryptV2File))
+	if err != nil || !strings.HasPrefix(string(srv), serverKeyHeader) {
+		t.Fatalf("server key %q %v", srv, err)
 	}
-	for _, l := range lines[1:17] {
-		if len(l) != 32 {
-			t.Fatalf("line length %d", len(l))
+	key, err := ca.TLSCryptV2Client([]byte("abcdef0123456789"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(string(key), clientKeyHeader) {
+		t.Fatalf("client key %q", key)
+	}
+	for _, bad := range [][]byte{nil, {}, make([]byte, MaxMetadata+1)} {
+		if _, err := ca.TLSCryptV2Client(bad); !errors.Is(err, ErrMetadata) {
+			t.Errorf("metadata %d: %v", len(bad), err)
 		}
+	}
+	again, err := Init(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv2, _ := os.ReadFile(again.TLSCryptV2ServerPath())
+	if string(srv2) != string(srv) {
+		t.Fatal("init regenerated the tls-crypt-v2 server key")
+	}
+}
+
+func TestOpenVPNMissing(t *testing.T) {
+	ca, _ := newCA(t)
+	old := OpenVPNBin
+	OpenVPNBin = filepath.Join(t.TempDir(), "missing")
+	defer func() { OpenVPNBin = old }()
+	if _, err := ca.TLSCryptV2Client([]byte("x")); !errors.Is(err, ErrOpenVPN) {
+		t.Fatalf("%v", err)
+	}
+	if _, err := Init(t.TempDir()); !errors.Is(err, ErrOpenVPN) {
+		t.Fatalf("init without openvpn: %v", err)
+	}
+}
+
+func TestRealOpenVPNKeys(t *testing.T) {
+	if os.Getenv("VEYL_REAL_OPENVPN") != "1" {
+		t.Skip("set VEYL_REAL_OPENVPN=1")
+	}
+	old := OpenVPNBin
+	OpenVPNBin = "/usr/sbin/openvpn"
+	defer func() { OpenVPNBin = old }()
+	ca, _ := newCA(t)
+	key, err := ca.TLSCryptV2Client([]byte("abcdef0123456789"))
+	if err != nil || !strings.HasPrefix(string(key), clientKeyHeader) {
+		t.Fatalf("%q %v", key, err)
 	}
 }
 

@@ -85,10 +85,74 @@ func TestMissingSocket(t *testing.T) {
 }
 
 func TestProfile(t *testing.T) {
-	p := Profile(Params{Host: "vpn.example.com", Port: 1194, Proto: "udp", CA: []byte("CA\n"), Cert: []byte("CERT\n"), TLSCrypt: []byte("TC\n")})
-	for _, want := range []string{"client\n", "proto udp\n", "remote vpn.example.com 1194\n", "<ca>\nCA\n</ca>\n", "<cert>\nCERT\n</cert>\n", "<key>\n__PRIVATE_KEY__\n</key>\n", "<tls-crypt>\nTC\n</tls-crypt>\n", "verify-x509-name veyl-server name\n"} {
+	base := Params{Host: "vpn.example.com", UDPPort: 1194, CA: []byte("CA\n"), Cert: []byte("CERT\n"), TLSCryptV2: []byte("TC2\n")}
+	p, err := Profile(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"client\n", "remote vpn.example.com 1194 udp\n", "<ca>\nCA\n</ca>\n", "<cert>\nCERT\n</cert>\n", "<key>\n__PRIVATE_KEY__\n</key>\n", "<tls-crypt-v2>\nTC2\n</tls-crypt-v2>\n", "verify-x509-name veyl-server name\n", "remote-cert-tls server\n", "data-ciphers AES-256-GCM:CHACHA20-POLY1305:AES-128-GCM\n", "connect-retry 2 5\n", "server-poll-timeout 4\n", "tls-version-min 1.2\n", "setenv opt block-outside-dns\n", "auth-nocache\n", "verb 1\n"} {
 		if !strings.Contains(p, want) {
 			t.Errorf("missing %q", want)
 		}
+	}
+	for _, bad := range []string{"data-ciphers-fallback", "<tls-crypt>", "tcp-client", "proto ", "remote-random-hostname", "explicit-exit-notify", "#"} {
+		if strings.Contains(p, bad) {
+			t.Errorf("unexpected %q", bad)
+		}
+	}
+	st := base
+	st.Stealth = true
+	p, err = Profile(st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := strings.Index(p, "remote vpn.example.com 1194 udp\n")
+	tc := strings.Index(p, "remote vpn.example.com 443 tcp-client\n")
+	if u < 0 || tc < 0 || tc < u {
+		t.Fatalf("remotes out of order:\n%s", p)
+	}
+	bads := []func(*Params){
+		func(p *Params) { p.Host = "" },
+		func(p *Params) { p.Host = "vpn.example.com\nup /bin/sh" },
+		func(p *Params) { p.Host = "10.0.0.1" },
+		func(p *Params) { p.UDPPort = 80 },
+		func(p *Params) { p.TLSCryptV2 = nil },
+		func(p *Params) { p.Cert = []byte("x</cert>\nup /bin/sh\n<cert>") },
+	}
+	for i, f := range bads {
+		c := base
+		f(&c)
+		if _, err := Profile(c); err != ErrProfile {
+			t.Errorf("case %d: %v", i, err)
+		}
+	}
+}
+
+func TestMulti(t *testing.T) {
+	k1 := make(chan string, 1)
+	k2 := make(chan string, 1)
+	a := &Client{Socket: fake(t, k1)}
+	b := &Client{Socket: fake(t, k2)}
+	down := &Client{Socket: "/nonexistent/sock"}
+	m := &Multi{Clients: []*Client{a, down, b}}
+	on, err := m.Online()
+	if err != nil || len(on) != 2 || !on["aaaa"] {
+		t.Fatalf("%v %v", on, err)
+	}
+	if err := m.Kill("aaaa"); err != nil {
+		t.Fatal(err)
+	}
+	if <-k1 != "aaaa" || <-k2 != "aaaa" {
+		t.Fatal("kill not sent to all instances")
+	}
+	if err := m.Kill("bad name"); err != ErrBadName {
+		t.Fatal(err)
+	}
+	none := &Multi{Clients: []*Client{down}}
+	if _, err := none.Online(); err == nil {
+		t.Fatal("expected error when all instances are down")
+	}
+	if err := none.Kill("aaaa"); err == nil {
+		t.Fatal("expected kill error")
 	}
 }

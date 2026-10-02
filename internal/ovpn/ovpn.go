@@ -102,12 +102,3 @@ func (c *Client) Kill(cn string) error {
 	}
 	return errors.New("management closed")
 }
-
-type Params struct {
-	Host     string
-	Port     int
-	Proto    string
-	CA       []byte
-	Cert     []byte
-	TLSCrypt []byte
-}

@@ -1,0 +1,958 @@
+openapi: 3.1.0
+info:
+  title: Veyl public API
+  version: 0.2.0
+  summary: Account, device and token API of a self-hosted Veyl VPN server.
+  description: |
+    Every endpoint lives under /v1 and speaks JSON. Request bodies are limited to 8 KiB and
+    must be sent with Content-Type application/json. Newer endpoints reject unknown fields.
+
+    Errors use the envelope {"error": "human message", "code": "MACHINE_CODE"}. Clients
+    should branch on code, never on the message.
+
+    Authentication comes in two forms. The legacy endpoints (/v1/devices, /v1/enroll,
+    /v1/revoke, /v1/password) take the account number and password in the JSON body. The
+    newer endpoints use a short-lived bearer access token from POST /v1/auth/token. The
+    account number never appears in a URL.
+
+    Credential endpoints share one rate limit policy per client address (10 per minute,
+    burst 20) under a global ceiling, plus a per-account lockout after 5 wrong passwords
+    (60 seconds, doubling up to 15 minutes). The server keeps no logs of requests.
+  license:
+    name: See repository
+servers:
+  - url: https://vpn.example.com
+    description: Your Veyl server
+tags:
+  - name: server
+    description: Public server information
+  - name: auth
+    description: Access tokens
+  - name: account
+    description: The signed-in account
+  - name: devices
+    description: Devices of the signed-in account
+  - name: legacy
+    description: Body-credential endpoints kept for shipped apps
+paths:
+  /v1/info:
+    get:
+      tags: [server]
+      operationId: getInfo
+      summary: Server information
+      responses:
+        "200":
+          description: Public server information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Info"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /v1/health:
+    get:
+      tags: [server]
+      operationId: getHealth
+      summary: Liveness check
+      responses:
+        "200":
+          description: The API is up
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                additionalProperties: false
+                properties:
+                  status:
+                    type: string
+                    const: ok
+  /v1/openapi.yaml:
+    get:
+      tags: [server]
+      operationId: getOpenAPI
+      summary: This document
+      responses:
+        "200":
+          description: OpenAPI 3.1 document
+          content:
+            application/yaml:
+              schema:
+                type: string
+  /v1/register:
+    post:
+      tags: [legacy, auth]
+      operationId: register
+      summary: Claim an account, redeem an invite, or create an account
+      description: |
+        With account, sets the password of an unclaimed account number created by the
+        administrator (allowed in every registration mode). With invite, redeems an invite
+        code and creates a new account (registration mode invite or open). With neither,
+        creates a new account (registration mode open only). Send account or invite, not both.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                account:
+                  $ref: "#/components/schemas/AccountNumber"
+                invite:
+                  type: string
+                  maxLength: 64
+                  examples: [VEYL-ABCD-EFGH-IJKL-MNOP]
+                password:
+                  $ref: "#/components/schemas/Password"
+      responses:
+        "200":
+          description: The account number. Store it, it is shown only here.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [account]
+                properties:
+                  account:
+                    $ref: "#/components/schemas/AccountNumber"
+        "400":
+          description: WEAK_PASSWORD, BAD_REQUEST, PAYLOAD_TOO_LARGE, REGISTRATION_CLOSED (account required) or INVITE_REQUIRED
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/InvalidCredentials"
+        "403":
+          description: INVALID_INVITE or REGISTRATION_CLOSED
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: ACCOUNT_ALREADY_CLAIMED
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /v1/devices:
+    post:
+      tags: [legacy]
+      operationId: legacyListDevices
+      summary: List devices with body credentials
+      requestBody:
+        $ref: "#/components/requestBodies/LegacyCredentials"
+      responses:
+        "200":
+          description: Devices of the account
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [limit, devices]
+                properties:
+                  limit:
+                    type: integer
+                  devices:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/LegacyDevice"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/InvalidCredentials"
+        "403":
+          $ref: "#/components/responses/AccountState"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /v1/enroll:
+    post:
+      tags: [legacy]
+      operationId: legacyEnroll
+      summary: Enroll a device with body credentials
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [account, password, name, csr]
+              properties:
+                account:
+                  $ref: "#/components/schemas/AccountNumber"
+                password:
+                  type: string
+                name:
+                  $ref: "#/components/schemas/DeviceName"
+                csr:
+                  $ref: "#/components/schemas/CSR"
+      responses:
+        "200":
+          description: The device ID and its OpenVPN profile
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, profile]
+                properties:
+                  id:
+                    $ref: "#/components/schemas/DeviceID"
+                  profile:
+                    $ref: "#/components/schemas/Profile"
+        "400":
+          description: INVALID_DEVICE_NAME, INVALID_CSR, BAD_REQUEST or PAYLOAD_TOO_LARGE
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/InvalidCredentials"
+        "403":
+          $ref: "#/components/responses/AccountState"
+        "409":
+          $ref: "#/components/responses/MaxDevices"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "503":
+          $ref: "#/components/responses/NotConfigured"
+  /v1/revoke:
+    post:
+      tags: [legacy]
+      operationId: legacyRevoke
+      summary: Revoke a device with body credentials
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [account, password, id]
+              properties:
+                account:
+                  $ref: "#/components/schemas/AccountNumber"
+                password:
+                  type: string
+                id:
+                  $ref: "#/components/schemas/DeviceID"
+      responses:
+        "200":
+          description: Revoked. The certificate is on the CRL and the live session was closed.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    const: revoked
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/InvalidCredentials"
+        "403":
+          $ref: "#/components/responses/AccountState"
+        "404":
+          $ref: "#/components/responses/DeviceNotFound"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /v1/password:
+    post:
+      tags: [legacy]
+      operationId: legacyChangePassword
+      summary: Change the password with body credentials
+      description: Also invalidates every access token of the account.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [account, password, new_password]
+              properties:
+                account:
+                  $ref: "#/components/schemas/AccountNumber"
+                password:
+                  type: string
+                new_password:
+                  $ref: "#/components/schemas/Password"
+      responses:
+        "200":
+          description: Changed
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    const: changed
+        "400":
+          description: WEAK_PASSWORD, BAD_REQUEST or PAYLOAD_TOO_LARGE
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/InvalidCredentials"
+        "403":
+          $ref: "#/components/responses/AccountState"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /v1/auth/token:
+    post:
+      tags: [auth]
+      operationId: createToken
+      summary: Exchange account number and password for an access token
+      description: |
+        Tokens live for one hour and exist only in server memory, stored as SHA-256 hashes.
+        At most 10 tokens are live per account; issuing an 11th evicts the oldest. Tokens
+        die on logout, password change, account deletion, account disablement and server
+        restart. An expired account can still sign in to read its status.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [account, password]
+              additionalProperties: false
+              properties:
+                account:
+                  $ref: "#/components/schemas/AccountNumber"
+                password:
+                  type: string
+      responses:
+        "200":
+          description: A new access token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Token"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/InvalidCredentials"
+        "403":
+          $ref: "#/components/responses/AccountState"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /v1/auth/logout:
+    post:
+      tags: [auth]
+      operationId: logout
+      summary: Invalidate the presented access token
+      security:
+        - bearer: []
+      responses:
+        "204":
+          description: Logged out
+        "401":
+          $ref: "#/components/responses/InvalidAccessToken"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /v1/me:
+    get:
+      tags: [account]
+      operationId: getMe
+      summary: The signed-in account
+      security:
+        - bearer: []
+      responses:
+        "200":
+          description: Account summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Me"
+        "401":
+          $ref: "#/components/responses/InvalidAccessToken"
+        "403":
+          $ref: "#/components/responses/AccountState"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+    delete:
+      tags: [account]
+      operationId: deleteMe
+      summary: Delete the account
+      description: Requires the password again. Revokes every device and every token.
+      security:
+        - bearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              additionalProperties: false
+              properties:
+                password:
+                  type: string
+      responses:
+        "204":
+          description: Deleted
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          description: INVALID_ACCESS_TOKEN or INVALID_CREDENTIALS
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          $ref: "#/components/responses/AccountState"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /v1/me/devices:
+    get:
+      tags: [devices]
+      operationId: listMyDevices
+      summary: Devices of the signed-in account
+      security:
+        - bearer: []
+      responses:
+        "200":
+          description: Devices and the device limit
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [limit, devices]
+                properties:
+                  limit:
+                    type: integer
+                  devices:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Device"
+        "401":
+          $ref: "#/components/responses/InvalidAccessToken"
+        "403":
+          $ref: "#/components/responses/AccountState"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+    post:
+      tags: [devices]
+      operationId: addMyDevice
+      summary: Enroll a device
+      description: |
+        The client generates an EC P-256 key pair and sends only a CSR. The server ignores the
+        CSR subject, issues a certificate whose common name is a random device ID, and
+        returns an OpenVPN profile with __PRIVATE_KEY__ in place of the private key, which the
+        client substitutes locally. When name is empty a friendly name such as "Quiet Otter"
+        is chosen, unique within the account.
+      security:
+        - bearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [csr]
+              additionalProperties: false
+              properties:
+                name:
+                  $ref: "#/components/schemas/DeviceName"
+                csr:
+                  $ref: "#/components/schemas/CSR"
+      responses:
+        "200":
+          description: The new device and its profile
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, name, profile]
+                properties:
+                  id:
+                    $ref: "#/components/schemas/DeviceID"
+                  name:
+                    $ref: "#/components/schemas/DeviceName"
+                  profile:
+                    $ref: "#/components/schemas/Profile"
+        "400":
+          description: INVALID_DEVICE_NAME, INVALID_CSR or BAD_REQUEST
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/InvalidAccessToken"
+        "403":
+          $ref: "#/components/responses/AccountState"
+        "409":
+          $ref: "#/components/responses/MaxDevices"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "503":
+          $ref: "#/components/responses/NotConfigured"
+  /v1/me/devices/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/DeviceID"
+    patch:
+      tags: [devices]
+      operationId: renameMyDevice
+      summary: Rename a device
+      security:
+        - bearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              additionalProperties: false
+              properties:
+                name:
+                  $ref: "#/components/schemas/DeviceName"
+      responses:
+        "200":
+          description: The renamed device
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Device"
+        "400":
+          description: INVALID_DEVICE_NAME or BAD_REQUEST
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/InvalidAccessToken"
+        "403":
+          $ref: "#/components/responses/AccountState"
+        "404":
+          $ref: "#/components/responses/DeviceNotFound"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+    delete:
+      tags: [devices]
+      operationId: deleteMyDevice
+      summary: Revoke a device
+      description: Adds the certificate to the CRL and disconnects the device on every OpenVPN instance.
+      security:
+        - bearer: []
+      responses:
+        "204":
+          description: Revoked
+        "401":
+          $ref: "#/components/responses/InvalidAccessToken"
+        "403":
+          $ref: "#/components/responses/AccountState"
+        "404":
+          $ref: "#/components/responses/DeviceNotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /v1/me/dns:
+    put:
+      tags: [account]
+      operationId: setMyDNS
+      summary: Choose DNS blocking categories for this account
+      description: Takes effect on the next connection of each device. An empty list turns blocking off.
+      security:
+        - bearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [blocking]
+              additionalProperties: false
+              properties:
+                blocking:
+                  type: array
+                  uniqueItems: true
+                  items:
+                    $ref: "#/components/schemas/DNSCategory"
+      responses:
+        "200":
+          description: The stored choice
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DNS"
+        "400":
+          description: INVALID_DNS_CATEGORY or BAD_REQUEST
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/InvalidAccessToken"
+        "403":
+          $ref: "#/components/responses/AccountState"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+    delete:
+      tags: [account]
+      operationId: resetMyDNS
+      summary: Return to the server default DNS blocking
+      security:
+        - bearer: []
+      responses:
+        "200":
+          description: The server default now in effect
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DNS"
+        "401":
+          $ref: "#/components/responses/InvalidAccessToken"
+        "403":
+          $ref: "#/components/responses/AccountState"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /v1/me/password:
+    put:
+      tags: [account]
+      operationId: changeMyPassword
+      summary: Change the password
+      description: Invalidates every token of the account, including the one used, and returns a fresh token.
+      security:
+        - bearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password, new_password]
+              additionalProperties: false
+              properties:
+                password:
+                  type: string
+                new_password:
+                  $ref: "#/components/schemas/Password"
+      responses:
+        "200":
+          description: A fresh access token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Token"
+        "400":
+          description: WEAK_PASSWORD or BAD_REQUEST
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: INVALID_ACCESS_TOKEN or INVALID_CREDENTIALS
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          $ref: "#/components/responses/AccountState"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      bearerFormat: vey_ followed by 43 base64url characters
+  requestBodies:
+    LegacyCredentials:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [account, password]
+            properties:
+              account:
+                $ref: "#/components/schemas/AccountNumber"
+              password:
+                type: string
+  responses:
+    BadRequest:
+      description: BAD_REQUEST or PAYLOAD_TOO_LARGE
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    PayloadTooLarge:
+      description: PAYLOAD_TOO_LARGE, the body is over 8 KiB
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    UnsupportedMediaType:
+      description: UNSUPPORTED_MEDIA_TYPE, send Content-Type application/json
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    InvalidCredentials:
+      description: INVALID_CREDENTIALS. Identical for an unknown account and a wrong password.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    InvalidAccessToken:
+      description: INVALID_ACCESS_TOKEN. Missing, malformed, expired or revoked token.
+      headers:
+        WWW-Authenticate:
+          schema:
+            type: string
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    AccountState:
+      description: ACCOUNT_DISABLED or ACCOUNT_EXPIRED
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    MaxDevices:
+      description: MAX_DEVICES_REACHED
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    DeviceNotFound:
+      description: DEVICE_NOT_FOUND
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotConfigured:
+      description: NOT_CONFIGURED, the server has no public address yet
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    TooManyRequests:
+      description: TOO_MANY_REQUESTS
+      headers:
+        Retry-After:
+          description: Seconds to wait
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: Human readable message
+        code:
+          type: string
+          description: Machine readable code. Always present on current servers.
+          enum:
+            - INVALID_CREDENTIALS
+            - INVALID_ACCESS_TOKEN
+            - MAX_DEVICES_REACHED
+            - DEVICE_NOT_FOUND
+            - ACCOUNT_EXPIRED
+            - ACCOUNT_DISABLED
+            - ACCOUNT_ALREADY_CLAIMED
+            - TOO_MANY_REQUESTS
+            - INVALID_INVITE
+            - REGISTRATION_CLOSED
+            - INVITE_REQUIRED
+            - WEAK_PASSWORD
+            - INVALID_DEVICE_NAME
+            - INVALID_CSR
+            - INVALID_DNS_CATEGORY
+            - BAD_REQUEST
+            - PAYLOAD_TOO_LARGE
+            - UNSUPPORTED_MEDIA_TYPE
+            - NOT_CONFIGURED
+            - NOT_FOUND
+            - METHOD_NOT_ALLOWED
+            - INTERNAL_ERROR
+    AccountNumber:
+      type: string
+      pattern: "^[0-9]{16}$"
+      examples: ["1234567812345678"]
+    Password:
+      type: string
+      minLength: 10
+      maxLength: 256
+    DeviceID:
+      type: string
+      pattern: "^[0-9a-f]{16}$"
+      maxLength: 64
+    DeviceName:
+      type: string
+      minLength: 1
+      maxLength: 32
+      examples: [Quiet Otter]
+    CSR:
+      type: string
+      description: PEM encoded PKCS#10 request for an EC P-256 key
+    Profile:
+      type: string
+      description: |
+        OpenVPN client configuration. Contains the CA, the device certificate, the per-device
+        tls-crypt-v2 client key and the literal __PRIVATE_KEY__ inside <key></key>. Remotes are
+        the UDP port and, when stealth is on, TCP 443.
+    DNSCategory:
+      type: string
+      enum: [ads, trackers, malware, adult, gambling, social]
+    DNS:
+      type: object
+      required: [dns_blocking, dns_custom]
+      properties:
+        dns_blocking:
+          type: array
+          items:
+            $ref: "#/components/schemas/DNSCategory"
+        dns_custom:
+          type: boolean
+    Token:
+      type: object
+      required: [access_token, expires_at]
+      properties:
+        access_token:
+          type: string
+          pattern: "^vey_[A-Za-z0-9_-]{43}$"
+        expires_at:
+          type: string
+          format: date-time
+    Info:
+      type: object
+      required: [endpoint, port, proto, name, version, registration, device_limit, dns_categories, stealth, post_quantum, app_url]
+      properties:
+        endpoint:
+          type: string
+          description: Public host name or address of the VPN, empty before setup
+        port:
+          type: integer
+          description: OpenVPN UDP port
+        proto:
+          type: string
+          const: udp
+        stealth_port:
+          type: integer
+          description: Present when stealth is on. OpenVPN over TCP on this port.
+        name:
+          type: string
+        version:
+          type: string
+        registration:
+          type: string
+          enum: [closed, invite, open]
+        device_limit:
+          type: integer
+          description: Default devices per account
+        dns_categories:
+          type: array
+          items:
+            $ref: "#/components/schemas/DNSCategory"
+        dns_default:
+          type: array
+          items:
+            $ref: "#/components/schemas/DNSCategory"
+        stealth:
+          type: boolean
+        post_quantum:
+          type: boolean
+          description: Hybrid post-quantum key exchange requested by the operator
+        app_url:
+          type: string
+    Me:
+      type: object
+      required: [id, created, expires, device_limit, devices, dns_blocking, dns_custom, status]
+      properties:
+        id:
+          type: string
+          description: Opaque account ID, not the account number
+        created:
+          type: string
+          format: date-time
+          description: Day of creation, rounded to midnight UTC
+        expires:
+          type: [string, "null"]
+          format: date-time
+        device_limit:
+          type: integer
+        devices:
+          type: integer
+          description: Number of enrolled devices
+        dns_blocking:
+          type: array
+          items:
+            $ref: "#/components/schemas/DNSCategory"
+        dns_custom:
+          type: boolean
+        status:
+          type: string
+          enum: [active, expired, disabled]
+    Device:
+      type: object
+      required: [id, name, created, online]
+      properties:
+        id:
+          $ref: "#/components/schemas/DeviceID"
+        name:
+          $ref: "#/components/schemas/DeviceName"
+        created:
+          type: string
+          format: date-time
+          description: Day of enrollment, rounded to midnight UTC
+        online:
+          type: boolean
+          description: Connected right now. Read live, never stored.
+    LegacyDevice:
+      type: object
+      required: [id, name, created, online]
+      properties:
+        id:
+          $ref: "#/components/schemas/DeviceID"
+        name:
+          $ref: "#/components/schemas/DeviceName"
+        created:
+          type: integer
+          description: Unix seconds, rounded to midnight UTC
+        online:
+          type: boolean

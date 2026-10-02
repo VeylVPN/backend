@@ -7,6 +7,7 @@ import (
 )
 
 const (
+	EventVerify     = "verify"
 	EventConnect    = "connect"
 	EventDisconnect = "disconnect"
 )

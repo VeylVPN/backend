@@ -1,16 +1,19 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io"
 	"log"
-	"net/http"
 	"os"
-	"path/filepath"
-	"time"
+	"os/signal"
+	"syscall"
 
 	"github.com/veylvpn/backend/internal/api"
+	"github.com/veylvpn/backend/internal/app"
+	"github.com/veylvpn/backend/internal/config"
+	"github.com/veylvpn/backend/internal/hook"
 	"github.com/veylvpn/backend/internal/ovpn"
 	"github.com/veylvpn/backend/internal/pki"
 	"github.com/veylvpn/backend/internal/store"
@@ -30,93 +33,86 @@ func die(msg string) {
 
 func main() {
 	log.SetOutput(io.Discard)
-	data := flag.String("data", env("VEYL_DATA", "/var/lib/veyl"), "")
-	listen := flag.String("listen", env("VEYL_LISTEN", "127.0.0.1:8080"), "")
-	endpoint := flag.String("endpoint", env("VEYL_ENDPOINT", ""), "")
-	static := flag.String("static", env("VEYL_STATIC", ""), "")
-	mgmt := flag.String("mgmt", env("VEYL_MGMT", "/run/veyl/mgmt"), "")
+	if len(os.Args) > 1 && os.Args[1] == "hook" {
+		os.Exit(hook.Main(os.Args[2:]))
+	}
+	data := flag.String("data", env("VEYL_DATA", config.DataDir), "")
+	run := flag.String("run", env("VEYL_RUN", config.RunDir), "")
+	listen := flag.String("listen", env("VEYL_LISTEN", config.WebListen), "")
 	flag.Parse()
+	paths := config.Paths{Data: *data, Run: *run}
 
 	args := flag.Args()
 	if len(args) > 0 && args[0] == "init" {
-		dir := *data
-		if len(args) > 1 {
-			dir = args[1]
-		}
-		if _, err := pki.Init(dir); err != nil {
+		if _, err := pki.Init(paths.PKI()); err != nil {
 			die("init failed")
 		}
 		return
 	}
 
-	st, err := store.Open(filepath.Join(*data, "state.json"))
+	st, err := store.Open(paths.State())
 	if err != nil {
 		die("state unavailable")
 	}
-	ca, err := pki.Init(*data)
+	ca, err := pki.Init(paths.PKI())
 	if err != nil {
 		die("pki unavailable")
 	}
-	crl := filepath.Join(*data, pki.CRLFile)
-	m := &ovpn.Client{Socket: *mgmt}
+	live, err := config.NewLive(paths.Settings())
+	if err != nil {
+		die("settings unavailable")
+	}
+	mgmt := &ovpn.Multi{Clients: []*ovpn.Client{
+		{Socket: paths.Mgmt(config.InstanceUDP)},
+		{Socket: paths.Mgmt(config.InstanceTCP)},
+	}}
+	d := app.Deps{Paths: paths, Settings: live, Store: st, CA: ca, Mgmt: mgmt}
 
 	if len(args) > 0 {
-		cli(st, ca, m, crl, args)
+		cli(d, args)
 		return
 	}
 
-	if *endpoint == "" {
-		die("endpoint required")
-	}
 	if serials, err := st.Revoked(); err == nil {
-		_ = ca.WriteCRL(crl, serials)
+		_ = ca.WriteCRL(paths.CRL(), serials)
 	}
-	cfg := api.Config{
-		Endpoint:         *endpoint,
-		Port:             1194,
-		Proto:            "udp",
-		StaticDir:        *static,
-		CRLPath:          crl,
-		OpenRegistration: os.Getenv("VEYL_OPEN_REGISTRATION") == "1",
-	}
-	srv := &http.Server{
-		Addr:              *listen,
-		Handler:           api.New(cfg, st, ca, m).Handler(),
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       10 * time.Second,
-		WriteTimeout:      10 * time.Second,
-		ErrorLog:          log.New(io.Discard, "", 0),
-	}
-	if err := srv.ListenAndServe(); err != nil {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	go func() {
+		if err := hook.NewServer(d).Serve(ctx, paths.HookSock()); err != nil {
+			fmt.Fprintln(os.Stderr, "hook socket unavailable")
+		}
+	}()
+	srv := api.HTTPServer(*listen, api.New(d).Handler())
+	go func() {
+		<-ctx.Done()
+		_ = srv.Close()
+	}()
+	if err := srv.ListenAndServe(); err != nil && ctx.Err() == nil {
 		os.Exit(1)
 	}
 }
 
-func cli(st *store.Store, ca *pki.CA, m *ovpn.Client, crl string, args []string) {
+func cli(d app.Deps, args []string) {
 	if args[0] == "account" && len(args) > 1 {
 		switch {
 		case args[1] == "new":
-			n, err := st.NewAccount()
+			n, err := d.Store.NewAccount()
 			if err != nil {
 				die("failed")
 			}
 			fmt.Println(n)
 			return
 		case args[1] == "delete" && len(args) > 2:
-			devs, err := st.DeleteAccount(args[2])
+			devs, err := d.Store.DeleteAccount(args[2])
 			if err != nil {
 				die(err.Error())
 			}
-			if serials, err := st.Revoked(); err == nil {
-				_ = ca.WriteCRL(crl, serials)
-			}
-			for _, d := range devs {
-				_ = m.Kill(d.ID)
-			}
+			_ = api.RevokeEffects(d, devs)
 			fmt.Println("deleted")
 			return
 		}
 	}
-	fmt.Fprintln(os.Stderr, "usage: veyld [init [dir] | account new | account delete <number>]")
+	fmt.Fprintln(os.Stderr, "usage: veyld [init | account new | account delete <number> | hook verify|connect|disconnect]")
 	os.Exit(2)
 }
