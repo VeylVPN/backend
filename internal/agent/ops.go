@@ -823,7 +823,48 @@ func (a *Agent) Status(ctx context.Context) (map[string]string, error) {
 			data["cert_expiry"] = exp.UTC().Format(time.RFC3339)
 		}
 	}
+	displayAliases(data)
 	return data, nil
+}
+
+func humanBytes(n uint64) string {
+	const unit = 1024
+	if n < unit {
+		return strconv.FormatUint(n, 10) + " B"
+	}
+	div, exp := uint64(unit), 0
+	for v := n / unit; v >= unit && exp < 4; v /= unit {
+		div *= unit
+		exp++
+	}
+	return strconv.FormatFloat(float64(n)/float64(div), 'f', 1, 64) + " " + string("KMGTP"[exp]) + "B"
+}
+
+func displayAliases(data map[string]string) {
+	for k, v := range data {
+		if name, ok := strings.CutPrefix(k, "service."); ok {
+			data["svc."+name] = v
+		}
+	}
+	if v, ok := data["public_ipv4"]; ok {
+		data["public_ip"] = v
+	}
+	if v, ok := data["distro"]; ok {
+		data["os"] = v
+	}
+	total, terr := strconv.ParseUint(data["mem_memtotal"], 10, 64)
+	avail, aerr := strconv.ParseUint(data["mem_memavailable"], 10, 64)
+	if terr == nil && total > 0 {
+		data["ram_mb"] = strconv.FormatUint(total/(1<<20), 10)
+		if aerr == nil && avail <= total {
+			data["mem"] = humanBytes(total-avail) + " used of " + humanBytes(total)
+		}
+	}
+	dt, derr := strconv.ParseUint(data["disk_total"], 10, 64)
+	df, ferr := strconv.ParseUint(data["disk_free"], 10, 64)
+	if derr == nil && ferr == nil && dt > 0 {
+		data["disk"] = humanBytes(df) + " free of " + humanBytes(dt)
+	}
 }
 
 func (a *Agent) Bootstrap(ctx context.Context, emit Emit, domain, email string) error {

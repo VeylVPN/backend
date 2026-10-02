@@ -685,3 +685,29 @@ func TestUpdateArgs(t *testing.T) {
 		}
 	}
 }
+
+func TestDisplayAliases(t *testing.T) {
+	d := map[string]string{
+		"service.veyl":     "active",
+		"public_ipv4":      "203.0.113.5",
+		"distro":           "Debian GNU/Linux 13 (trixie)",
+		"mem_memtotal":     "1073741824",
+		"mem_memavailable": "536870912",
+		"disk_total":       "21474836480",
+		"disk_free":        "10737418240",
+	}
+	displayAliases(d)
+	want := map[string]string{
+		"svc.veyl":  "active",
+		"public_ip": "203.0.113.5",
+		"os":        "Debian GNU/Linux 13 (trixie)",
+		"ram_mb":    "1024",
+		"mem":       "512.0 MB used of 1.0 GB",
+		"disk":      "10.0 GB free of 20.0 GB",
+	}
+	for k, v := range want {
+		if d[k] != v {
+			t.Errorf("%s = %q, want %q", k, d[k], v)
+		}
+	}
+}

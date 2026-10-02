@@ -845,17 +845,24 @@ func (w *Wizard) apply(rw http.ResponseWriter, r *http.Request) {
 }
 
 func (w *Wizard) finish(key string) (any, error) {
-	set, err := w.d.Settings.Update(func(s *config.Settings) error { s.Configured = true; return nil })
-	if err != nil {
-		return nil, errors.New("could not save the final settings")
-	}
-	_ = os.Remove(w.d.Paths.SetupToken())
 	now := w.now()
 	w.mu.Lock()
-	w.completed = now
 	if s := w.sessions[key]; s != nil {
 		s.done = now
 	}
+	w.mu.Unlock()
+	set, err := w.d.Settings.Update(func(s *config.Settings) error { s.Configured = true; return nil })
+	if err != nil {
+		w.mu.Lock()
+		if s := w.sessions[key]; s != nil {
+			s.done = time.Time{}
+		}
+		w.mu.Unlock()
+		return nil, errors.New("could not save the final settings")
+	}
+	_ = os.Remove(w.d.Paths.SetupToken())
+	w.mu.Lock()
+	w.completed = now
 	for k := range w.sessions {
 		if k != key {
 			delete(w.sessions, k)

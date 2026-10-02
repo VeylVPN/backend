@@ -47,7 +47,7 @@ func TestRoundTrip(t *testing.T) {
 	if err := Restore(dst, data, "a strong passphrase"); err != nil {
 		t.Fatal(err)
 	}
-	for _, f := range []string{"settings.json", "state.json", "admin.json", "ca.crt", "ca.key", "server.crt", "server.key", "tls-crypt.key", "tls-crypt-v2-server.key", "crl.pem"} {
+	for _, f := range []string{"settings.json", "state.json", "admin.json", "ca.crt", "ca.key", "server.crt", "server.key", "tls-crypt-v2-server.key", "crl.pem"} {
 		a, err1 := os.ReadFile(filepath.Join(src.Data, f))
 		b, err2 := os.ReadFile(filepath.Join(dst.Data, f))
 		if err1 != nil || err2 != nil || !bytes.Equal(a, b) {

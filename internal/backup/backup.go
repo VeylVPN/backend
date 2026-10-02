@@ -53,7 +53,6 @@ var files = []entry{
 	{"ca.key", 0o600, true},
 	{"server.crt", 0o644, false},
 	{"server.key", 0o600, false},
-	{"tls-crypt.key", 0o600, false},
 	{"tls-crypt-v2-server.key", 0o640, false},
 	{"crl.pem", 0o644, false},
 }
