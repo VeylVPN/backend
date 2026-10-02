@@ -3,6 +3,7 @@ package panel
 import (
 	"context"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -38,7 +39,7 @@ func TestPairNodeStoresKeyEncrypted(t *testing.T) {
 		t.Fatal("secret key")
 	}
 	fi, _ := os.Stat(h.paths.Secret())
-	if fi.Mode().Perm() != 0o600 {
+	if runtime.GOOS != "windows" && fi.Mode().Perm() != 0o600 {
 		t.Fatal(fi.Mode())
 	}
 	if code, out := o.do("POST", "/api/nodes", map[string]string{"code": n.code(panelkey.ScopeManage)}); code != 409 || out["code"] != "DUPLICATE" {

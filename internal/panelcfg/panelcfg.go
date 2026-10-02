@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -35,6 +36,8 @@ const (
 	Webroot        = "/var/www/veyl-panel-acme"
 	LetsEncryptDir = "/etc/letsencrypt"
 	TmpfilesFile   = "/etc/tmpfiles.d/veyl-panel.conf"
+	LinuxDataDir   = "/var/lib/veyl-panel"
+	LinuxRunDir    = "/run/veyl-panel"
 )
 
 var (
@@ -144,7 +147,7 @@ func WriteFile(path string, b []byte, mode os.FileMode) error {
 }
 
 func CertPaths(domain string) (string, string) {
-	return filepath.Join(CertDir, domain+".crt"), filepath.Join(CertDir, domain+".key")
+	return path.Join(CertDir, domain+".crt"), path.Join(CertDir, domain+".key")
 }
 
 func ChallengeName(domain string) string {

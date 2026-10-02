@@ -3,6 +3,7 @@ package panelkey
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -36,7 +37,7 @@ func TestPairingLifecycle(t *testing.T) {
 		t.Fatal("code reused")
 	}
 	fi, _ := os.Stat(path)
-	if fi.Mode().Perm() != 0o600 {
+	if runtime.GOOS != "windows" && fi.Mode().Perm() != 0o600 {
 		t.Fatal(fi.Mode())
 	}
 	raw, _ := os.ReadFile(path)

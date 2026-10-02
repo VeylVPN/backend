@@ -238,6 +238,7 @@ func newHarness(t *testing.T, s config.Settings) *harness {
 			return []byte("font"), nil
 		},
 		Lookup:        func(string) (int, int, error) { return 990, 990, nil },
+		AllowUID:      func(uid uint32) bool { return uid == 0 || uid == uint32(os.Getuid()) },
 		Chown:         func(string, int, int) error { return nil },
 		Sleep:         func(context.Context, time.Duration) error { return nil },
 		HealthTimeout: time.Millisecond,

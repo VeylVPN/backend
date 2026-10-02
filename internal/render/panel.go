@@ -134,8 +134,8 @@ const (
 
 func PanelUnits() []File {
 	bin := config.BinPath
-	data := panelcfg.DataDir
-	run := panelcfg.RunDir
+	data := panelcfg.LinuxDataDir
+	run := panelcfg.LinuxRunDir
 	files := []File{
 		{Path: filepath.Join(UnitDir, PanelUnit), Data: unit(
 			[]string{"[Unit]", "Description=Veyl Control", "After=network-online.target " + PanelAgentUnit, "Wants=network-online.target " + PanelAgentUnit, "StartLimitIntervalSec=0"},

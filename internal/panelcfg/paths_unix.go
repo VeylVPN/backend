@@ -3,6 +3,6 @@
 package panelcfg
 
 const (
-	DataDir = "/var/lib/veyl-panel"
-	RunDir  = "/run/veyl-panel"
+	DataDir = LinuxDataDir
+	RunDir  = LinuxRunDir
 )

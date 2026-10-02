@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -225,6 +226,9 @@ func TestACMEDNSHandshake(t *testing.T) {
 }
 
 func TestACMEHookRejectsOtherUsers(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("peer credentials are unix only")
+	}
 	h := newHarness(t, nil)
 	_ = panelcfg.SaveSite(h.paths.Site(), panelcfg.Site{Domain: "control.example.com", Mode: panelcfg.ModeDNS})
 	ln, err := h.p.acme.Listen(h.paths.ACMESock())
