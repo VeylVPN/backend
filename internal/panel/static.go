@@ -27,7 +27,6 @@ var contentTypes = map[string]string{
 type static struct {
 	files  fs.FS
 	shared fs.FS
-	etags  map[string]string
 }
 
 func newStatic() *static {
@@ -35,7 +34,7 @@ func newStatic() *static {
 	if err != nil {
 		panic(err)
 	}
-	s := &static{files: sub, shared: web.Assets(), etags: map[string]string{}}
+	s := &static{files: sub, shared: web.Brand()}
 	return s
 }
 
@@ -43,16 +42,10 @@ func (s *static) read(name string) ([]byte, bool) {
 	if b, err := fs.ReadFile(s.files, name); err == nil {
 		return b, true
 	}
-	if sharedAsset(name) {
-		if b, err := fs.ReadFile(s.shared, name); err == nil {
-			return b, true
-		}
+	if b, err := fs.ReadFile(s.shared, name); err == nil {
+		return b, true
 	}
 	return nil, false
-}
-
-func sharedAsset(name string) bool {
-	return name == "brand.css" || name == "brand.js" || strings.HasPrefix(name, "brand-") || name == "ui.js"
 }
 
 func (s *static) ServeHTTP(w http.ResponseWriter, r *http.Request) {

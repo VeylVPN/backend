@@ -34,7 +34,8 @@
     ["invites", "Invites", "ticket"],
     ["settings", "Settings", "sliders"],
     ["security", "Security", "shield"],
-    ["backup", "Backup", "archive"]
+    ["backup", "Backup", "archive"],
+    ["control", "Control Panel", "panel"]
   ];
 
   let sess = null;
@@ -181,7 +182,7 @@
     if (tab && tab.scrollIntoView && window.innerWidth < 1024) tab.scrollIntoView({ block: "nearest", inline: "center" });
     clearInterval(poll);
     stopWave();
-    ({ overview, accounts, invites, settings, security, backup })[page]();
+    ({ overview, accounts, invites, settings, security, backup, control })[page]();
   }
 
   window.addEventListener("hashchange", () => { if (sess && sess.authenticated) route(); });
@@ -735,6 +736,39 @@
         command("veyl restore veyl-backup.vbk")
       ))
     );
+  }
+
+  async function control() {
+    let scope = "manage";
+    const p = pageShell(["Control Panel", "connections."], "Veyl Control watches and manages many nodes from one place. It is optional and runs on its own domain.");
+    const l = loading(p.body);
+    const r = await api("GET", "/v1/admin/panel/keys");
+    if (!r.ok || page !== "control") return;
+    l.remove();
+    const holder = h("div", { class: "stack" });
+    const make = B.button("Create pairing code", { icon: "key", onClick: async () => {
+      const x = await api("POST", "/v1/admin/panel/pairing", { scope });
+      if (!x.ok) { B.toast(x.error, "err"); return; }
+      clear(holder).append(B.secret(x.data.code, x.data.code, { small: true, aria: "Copy pairing code", toast: "Pairing code copied" }), B.callout("warn", "", "Paste it into Veyl Control within 15 minutes. It works once."));
+    } });
+    const seg = B.segmented([["manage", "Manage", "Accounts, settings, restarts"], ["monitor", "Monitor", "Read only"]], scope, (v) => { scope = v; }, "Access");
+    const pair = h("section", { class: "card surface-panel" }, h("div", { class: "card-head" }, h("h2", { text: "Connect a panel" })),
+      h("div", { class: "card-body stack" }, B.settingRow("What the panel may do", "", seg), h("div", { class: "cluster" }, make), holder));
+    const list = h("div", { class: "list" });
+    if (!r.data.keys.length) list.append(h("p", { class: "list-item text-muted", text: "No panel is connected." }));
+    r.data.keys.forEach((k) => list.append(h("div", { class: "list-item" }, icon("key"),
+      h("div", { class: "grow stack stack-xs" }, h("span", { class: "list-item-title", text: k.name }), h("span", { class: "list-item-meta", text: "Added " + k.created + ", last used " + (k.last_used || "never") })),
+      h("span", { class: "badge " + (k.scope === "manage" ? "badge-violet" : ""), text: k.scope === "manage" ? "Manage" : "Monitor" }),
+      B.button("Revoke", { variant: "quiet", size: "sm", icon: "trash", onClick: async () => {
+        if (!(await B.confirm("Revoke this key?", "That panel loses access to this node right away.", "Revoke", true))) return;
+        const x = await api("DELETE", "/v1/admin/panel/keys/" + k.id);
+        if (!x.ok) { B.toast(x.error, "err"); return; }
+        control();
+      } }))));
+    const keys = h("section", { class: "card card-flush surface-panel" }, h("div", { class: "card-head" }, h("h2", { text: "Connected panels" })), list);
+    const install = h("section", { class: "card surface-panel" }, h("div", { class: "card-head" }, h("h2", { text: "No panel yet?" })),
+      h("div", { class: "card-body stack" }, h("p", { class: "card-text", text: "Install Veyl Control on this server or on a separate one. It needs its own domain." }), command("veyl panel install")));
+    p.body.append(pair, keys, install);
   }
 
   async function boot() {

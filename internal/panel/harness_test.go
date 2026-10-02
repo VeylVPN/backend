@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -226,7 +227,38 @@ type fakeNode struct {
 	agent *nodeAgent
 	pool  *x509.CertPool
 	down  bool
+	plat  string
+	mgmt  *fakeMgmt
 	mu    sync.Mutex
+}
+
+type fakeMgmt struct {
+	mu sync.Mutex
+	n  int
+}
+
+func (m *fakeMgmt) Online() (map[string]bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := map[string]bool{}
+	for i := 0; i < m.n; i++ {
+		out["dev"+strconv.Itoa(i)] = true
+	}
+	return out, nil
+}
+
+func (m *fakeMgmt) Kill(string) error { return nil }
+
+func (n *fakeNode) setOnline(v int) {
+	n.mgmt.mu.Lock()
+	n.mgmt.n = v
+	n.mgmt.mu.Unlock()
+}
+
+func (n *fakeNode) setPlatform(p string) {
+	n.mu.Lock()
+	n.plat = p
+	n.mu.Unlock()
 }
 
 type nodeAgent struct {
@@ -289,8 +321,9 @@ func newNode(t *testing.T, name string) *fakeNode {
 		t.Fatal(err)
 	}
 	ag := &nodeAgent{data: map[string]string{"svc.caddy": "active", "svc.veyl-dns": "active", "disk_total": "100", "disk_free": "50", "public_ip": "198.51.100.20", "cert_expiry": "2027-01-01T00:00:00Z"}}
-	d := app.Deps{Paths: p, Settings: live, Store: st, CA: ca, Agent: ag}
-	n := &fakeNode{t: t, d: d, agent: ag, adm: admin.New(d)}
+	mg := &fakeMgmt{}
+	d := app.Deps{Paths: p, Settings: live, Store: st, CA: ca, Agent: ag, Mgmt: mg}
+	n := &fakeNode{t: t, d: d, agent: ag, adm: admin.New(d), mgmt: mg, plat: "linux"}
 	ah := n.adm.Handler()
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/health", func(w http.ResponseWriter, r *http.Request) {
@@ -304,7 +337,10 @@ func newNode(t *testing.T, name string) *fakeNode {
 		web.JSON(w, 200, map[string]string{"status": "ok"})
 	})
 	mux.HandleFunc("/v1/info", func(w http.ResponseWriter, r *http.Request) {
-		web.JSON(w, 200, map[string]string{"platform": "linux", "name": name})
+		n.mu.Lock()
+		pl := n.plat
+		n.mu.Unlock()
+		web.JSON(w, 200, map[string]string{"platform": pl, "name": name})
 	})
 	mux.Handle("/v1/admin/", ah)
 	n.srv = httptest.NewTLSServer(mux)

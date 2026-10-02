@@ -526,6 +526,12 @@ func (p *PanelAgent) Install(ctx context.Context, emit Emit, o PanelInstallOpts)
 			return "unchanged", nil
 		}},
 		{"certbot", func() (string, error) { return p.ensureCertbot(ctx) }},
+		{"fonts", func() (string, error) {
+			node := p.Paths
+			p.Paths.Data = p.Panel.Data
+			defer func() { p.Paths = node }()
+			return p.stepFonts(ctx)
+		}},
 		{"settings", func() (string, error) { return p.seedSite(o, uid, gid) }},
 		{"web", func() (string, error) { return p.Site(ctx) }},
 		{"services", func() (string, error) {

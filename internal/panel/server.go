@@ -231,6 +231,7 @@ func (p *Panel) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/health", health)
 	st := newStatic()
 	mux.Handle("GET /", st)
+	mux.Handle("GET "+web.FontRoute, web.Fonts(p.opt.Paths.Data))
 
 	mux.HandleFunc("GET /api/session", p.sessionInfo)
 	mux.HandleFunc("POST /api/login", p.login)
