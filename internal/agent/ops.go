@@ -181,7 +181,6 @@ func (a *Agent) stepPKI(ctx context.Context) (string, error) {
 		{pki.ServerKeyFile, 0o600, uid, gid},
 		{pki.CRLFile, 0o644, uid, gid},
 		{render.TLSCryptV2Server, 0o640, 0, gid},
-		{pki.TLSCryptFile, 0o600, uid, gid},
 		{"settings.json", 0o600, uid, gid},
 		{"state.json", 0o600, uid, gid},
 		{"admin.json", 0o600, uid, gid},
