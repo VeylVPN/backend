@@ -70,6 +70,9 @@ func (a *Agent) init() {
 		}
 		if a.Chown == nil {
 			a.Chown = os.Lchown
+			if a.Windows {
+				a.Chown = func(string, int, int) error { return nil }
+			}
 		}
 		if a.Sleep == nil {
 			a.Sleep = sleepCtx

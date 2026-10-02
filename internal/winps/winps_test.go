@@ -83,11 +83,21 @@ func TestCommand(t *testing.T) {
 
 func pwsh(t *testing.T) string {
 	t.Helper()
-	if p := os.Getenv("VEYL_PWSH"); p != "" {
-		return p
-	}
+	candidates := []string{os.Getenv("VEYL_PWSH")}
 	for _, name := range []string{"pwsh", "powershell"} {
 		if p, err := exec.LookPath(name); err == nil {
+			candidates = append(candidates, p)
+		}
+	}
+	for _, p := range candidates {
+		if p == "" {
+			continue
+		}
+		argv, _ := Command("[Console]::Out.Write(" + Quote("veyl-ok") + ")")
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		out, err := exec.CommandContext(ctx, p, argv...).Output()
+		cancel()
+		if err == nil && strings.TrimSpace(string(out)) == "veyl-ok" {
 			return p
 		}
 	}

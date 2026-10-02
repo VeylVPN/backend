@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -280,7 +281,7 @@ func winAgent(t *testing.T, mutate func(*config.Settings)) (*Agent, *winFake) {
 		}
 	}
 	key := a.path(config.Join(config.WinUnboundDir, "root.key"))
-	if err := os.MkdirAll(key[:strings.LastIndex(key, "/")], 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(key), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(key, []byte(". IN DS 20326 8 2 E06D44B8"), 0o644); err != nil {
@@ -329,7 +330,7 @@ func TestWinApplyConverges(t *testing.T) {
 		t.Fatalf("%v %v", err, events())
 	}
 	st := stepStatus(events())
-	for _, s := range []string{"settings", "system", "services", "directories", "certificates", "adapters", "network", "firewall", "resolver", "web", "vpn-udp", "vpn-tcp", "dns-filter", "services-start", "verify-ports", "verify-dns"} {
+	for _, s := range []string{"settings", "system", "services", "directories", "certificates", "adapters", "network", "firewall", "resolver", "blocklists", "web", "vpn-udp", "vpn-tcp", "dns-filter", "services-start", "verify-ports", "verify-dns"} {
 		if st[s] != agentapi.StatusOK {
 			t.Errorf("step %s = %q", s, st[s])
 		}
