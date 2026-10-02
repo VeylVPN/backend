@@ -17,6 +17,7 @@ import (
 	"github.com/veylvpn/backend/internal/config"
 	"github.com/veylvpn/backend/internal/hook"
 	"github.com/veylvpn/backend/internal/setup"
+	"github.com/veylvpn/backend/internal/web"
 )
 
 const vpnAdminPort = "8081"
@@ -70,6 +71,7 @@ func routes(d app.Deps, apiH, adminH, setupH http.Handler, static string) http.H
 	mux.Handle("/setup", setupH)
 	mux.Handle("/setup/", setupH)
 	mux.Handle("/v1/", apiH)
+	mux.Handle(web.FontRoute, web.Fonts(d.Paths.Data))
 	var files http.Handler
 	if static != "" {
 		files = http.FileServer(http.Dir(static))
@@ -92,6 +94,13 @@ func routes(d app.Deps, apiH, adminH, setupH http.Handler, static string) http.H
 	return mux
 }
 
+func withFonts(d app.Deps, h http.Handler) http.Handler {
+	mux := http.NewServeMux()
+	mux.Handle(web.FontRoute, web.Fonts(d.Paths.Data))
+	mux.Handle("/", h)
+	return mux
+}
+
 func vpnAdmin(ctx context.Context, d app.Deps, h http.Handler) {
 	gateways := []string{config.UDPGW4, config.TCPGW4}
 	running := map[string]*http.Server{}
@@ -106,7 +115,7 @@ func vpnAdmin(ctx context.Context, d app.Deps, h http.Handler) {
 				if err != nil {
 					continue
 				}
-				s := api.HTTPServer(ln.Addr().String(), h)
+				s := api.HTTPServer(ln.Addr().String(), withFonts(d, h))
 				running[gw] = s
 				go func() { _ = s.Serve(ln) }()
 			}

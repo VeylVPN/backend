@@ -1,16 +1,21 @@
 "use strict";
 
 (() => {
-  const { h, icon, clear } = V;
+  const B = Brand;
+  const { h, icon, clear } = B;
   const app = document.getElementById("app");
+  const nav = document.getElementById("nav");
+  const navActions = document.getElementById("nav-actions");
+  const footerVersion = document.getElementById("footer-version");
+  B.watchNav(nav);
 
   const CATS = {
-    ads: ["Ads", "Ad networks in apps and websites."],
-    trackers: ["Trackers", "Companies following people around the web."],
-    malware: ["Malware and scams", "Known dangerous and phishing sites."],
-    adult: ["Adult content", "Adult websites."],
-    gambling: ["Gambling", "Betting and casino sites."],
-    social: ["Social media", "Facebook, TikTok, Instagram and others."]
+    ads: ["Ads", "Ad networks in apps and websites.", "ban"],
+    trackers: ["Trackers", "Companies that follow people around the web.", "eyeOff"],
+    malware: ["Malware and scams", "Known dangerous and phishing sites.", "shield"],
+    adult: ["Adult content", "Adult websites.", "lock"],
+    gambling: ["Gambling", "Betting and casino sites.", "dice"],
+    social: ["Social media", "Facebook, TikTok, Instagram and others.", "users"]
   };
   const UPSTREAMS = [
     ["recursive", "Private", "Your server asks directly"],
@@ -28,104 +33,104 @@
     ["accounts", "Accounts", "users"],
     ["invites", "Invites", "ticket"],
     ["settings", "Settings", "sliders"],
-    ["security", "Security", "shieldCheck"],
+    ["security", "Security", "shield"],
     ["backup", "Backup", "archive"]
   ];
 
   let sess = null;
   let page = "overview";
-  let pageEl = null;
-  let navBtns = {};
+  let content = null;
+  let links = [];
   let poll = 0;
+  let wave = null;
+  let platformKnown = false;
   const samples = [];
 
+  function windows() { return B.state.platform === "windows"; }
+
+  function root(cmd) { return windows() ? cmd : "sudo " + cmd; }
+
+  function shellLabel() { return windows() ? "In an admin PowerShell" : "On your server"; }
+
+  function command(cmd) { return B.codeBlock(root(cmd), shellLabel(), { promptText: windows() ? "PS> " : "$ " }); }
+
+  function learnPlatform(o) {
+    if (!o) return;
+    const p = B.platformOf(o, o.system);
+    B.state.platform = p;
+    B.state.stealthPort = B.stealthPortOf(p, o, o.system);
+    platformKnown = true;
+  }
+
   async function api(method, url, body, extra) {
-    const r = await V.api(method, url, body, extra);
+    const r = await B.api(method, url, body, extra);
     if (r.status === 401 && !url.endsWith("/login")) {
       sess = null;
-      login("You were signed out. Please sign in again.");
+      login("You were signed out. Sign in again.");
     }
-    if (r.data && r.data.csrf) V.state.csrf = r.data.csrf;
+    if (r.data && r.data.csrf) B.state.csrf = r.data.csrf;
     return r;
   }
 
-  function dialog(title, body, actions) {
-    const d = h("dialog", { "aria-label": title }, h("div", { class: "dlg" }, h("h2", { text: title }), ...body, actions && actions.length ? h("div", { class: "actions" }, ...actions) : null));
-    document.body.append(d);
-    d.addEventListener("close", () => d.remove());
-    d.showModal();
-    return d;
+  async function ensurePlatform() {
+    if (platformKnown) return;
+    const r = await api("GET", "/v1/admin/overview");
+    if (r.ok) learnPlatform(r.data);
   }
 
-  function confirmDlg(title, text, okLabel, danger) {
-    return new Promise((resolve) => {
-      let ok = false;
-      const yes = h("button", { class: "btn " + (danger ? "btn-danger" : "btn-primary"), type: "button" }, h("span", { text: okLabel }));
-      const no = h("button", { class: "btn btn-ghost", type: "button", text: "Cancel" });
-      const d = dialog(title, [h("p", { class: "muted", text })], [no, yes]);
-      yes.addEventListener("click", () => { ok = true; d.close(); });
-      no.addEventListener("click", () => d.close());
-      d.addEventListener("close", () => resolve(ok));
-    });
+  function title(main, dim) {
+    const el = h("h1", { class: "text-title", tabindex: "-1" }, main);
+    if (dim) el.append(" ", h("span", { class: "text-dim", text: dim }));
+    return el;
   }
 
-  function secretDlg(title, value, note, grouped) {
-    const close = h("button", { class: "btn btn-primary", type: "button", text: "Done" });
-    const d = dialog(title, [
-      h("div", { class: "code-box" }, h("div", { class: "val", text: grouped ? V.groupNumber(value) : value }), h("button", { class: "btn btn-ghost btn-small", type: "button", onclick: () => V.copy(value) }, icon("copy"), "Copy")),
-      V.callout("warn", "", note)
+  function secretDialog(heading, value, note, grouped) {
+    const close = B.button("Done", { async: false, onClick: () => d.close() });
+    const d = B.dialog(heading, [
+      B.secret(value, grouped ? B.groupNumber(value) : value, { aria: "Copy", toast: "Copied", small: !grouped && value.length > 24 }),
+      B.callout("warn", "", note)
     ], [close]);
-    close.addEventListener("click", () => d.close());
   }
 
-  function errSlot() { return h("div", { "aria-live": "assertive" }); }
-  function showErr(slot, msg) { clear(slot).append(V.callout("err", "", msg)); }
-
-  function field(label, input, hint) {
-    if (!input.id) input.id = "f" + Math.random().toString(36).slice(2, 8);
-    return h("div", { class: "field" }, h("label", { class: "label", for: input.id, text: label }), input, hint ? h("p", { class: "hint", text: hint }) : null);
-  }
-
-  function selectEl(options, value) {
-    const s = h("select", { class: "select" });
-    options.forEach(([v, t]) => s.append(h("option", { value: String(v), text: t, selected: String(v) === String(value) })));
-    return s;
+  function setNavActions(kids) {
+    clear(navActions).append(...kids);
   }
 
   function login(msg) {
     clearInterval(poll);
-    const err = errSlot();
-    const pw = h("input", { class: "input", id: "pw", type: "password", autocomplete: "current-password", placeholder: "Admin password" });
-    const code = h("input", { class: "input mono", id: "code", type: "text", inputmode: "numeric", autocomplete: "one-time-code", maxlength: "7", placeholder: "123 456" });
+    stopWave();
+    setNavActions([]);
+    const err = B.errorSlot();
+    const pw = B.input({ id: "pw", type: "password", autocomplete: "current-password", placeholder: "Admin password", class: "input-lg" });
+    const code = B.input({ id: "code", inputmode: "numeric", autocomplete: "one-time-code", maxlength: "7", placeholder: "123 456", mono: true, class: "input-lg" });
     const needCode = sess && sess.totp_required;
-    const btn = h("button", { class: "btn btn-primary btn-block", type: "submit" }, h("span", { text: "Sign in" }), icon("arrowR"));
-    btn.dataset.busy = "Signing in…";
-    const form = h("form", { class: "card", novalidate: true },
-      field("Password", pw),
-      needCode ? field("Code from your authenticator app", code) : null,
+    const btn = h("button", { class: "btn btn-primary btn-lg btn-block", type: "submit" }, h("span", { text: "Sign in" }), icon("arrowRight", "icon-arrow"));
+    btn.dataset.busy = "Signing in";
+    const form = h("form", { class: "card surface-card card-glow stack", novalidate: true },
+      B.field("Password", pw),
+      needCode ? B.field("Code from your authenticator app", code) : null,
       err,
       btn
     );
     form.addEventListener("submit", (e) => {
       e.preventDefault();
-      V.busy(btn, async () => {
-        if (!pw.value) { pw.focus(); showErr(err, "Enter your admin password."); return; }
+      B.busy(btn, async () => {
+        if (!pw.value) { pw.focus(); B.showError(err, "Enter your admin password."); return; }
         const r = await api("POST", "/v1/admin/login", { password: pw.value, totp: needCode ? code.value.replace(/\s/g, "") : "" });
-        if (!r.ok) { showErr(err, r.error); pw.select(); return; }
+        if (!r.ok) { B.showError(err, r.error); pw.select(); return; }
         await boot();
       });
     });
-    const body = [];
-    if (sess && !sess.admin_set) {
-      body.push(V.callout("warn", "Setup isn't finished", "Finish setup with the link from the installer, then come back here."));
-    }
-    clear(app).append(h("div", { class: "centered" }, h("div", { class: "login" },
-      h("span", { class: "brand" }, V.logo(), h("span", { text: (sess && sess.name) || "Veyl" })),
-      h("div", null, h("h1", { text: "Admin sign in" }), h("p", { class: "muted mt-s", text: msg || "Manage accounts, invites and settings." })),
-      ...body,
+    const name = (sess && sess.name) || "Veyl";
+    clear(app).append(h("div", { class: "auth-box rise", id: "login" },
+      h("div", { class: "auth-head" },
+        h("h1", { class: "text-title", tabindex: "-1" }, "Sign in to ", h("span", { class: "text-gradient", text: name + "." })),
+        h("p", { class: "text-lede", text: msg || "Manage accounts, invites and settings for this server." })
+      ),
+      sess && !sess.admin_set ? B.callout("warn", "Setup isn't finished", "Finish setup with the link from the installer, then come back here.") : null,
       form,
-      h("p", { class: "foot", text: "Forgot your password? Run \"sudo veyl admin reset-password\" on the server." })
-    )));
+      h("p", { class: "auth-foot", text: "Forgot your password? Run \"" + root("veyl admin reset-password") + "\" on the server." })
+    ));
     pw.focus();
   }
 
@@ -138,50 +143,70 @@
   }
 
   function shell() {
-    navBtns = {};
-    const nav = h("nav", { class: "nav", "aria-label": "Sections" });
+    links = [];
+    const side = h("nav", { class: "side-nav", "aria-label": "Admin" });
+    const tabs = h("nav", { class: "tabs", "aria-label": "Admin sections" });
     PAGES.forEach(([id, label, ic]) => {
-      const b = h("button", { type: "button", onclick: () => { location.hash = id; } }, icon(ic), h("span", { text: label }));
-      navBtns[id] = b;
-      nav.append(b);
+      const a = h("a", { class: "side-nav-link", href: "#" + id, "data-page": id }, icon(ic), h("span", { text: label }));
+      const t = h("a", { class: "tab", href: "#" + id, "data-page": id }, icon(ic), h("span", { text: label }));
+      links.push(a, t);
+      side.append(a);
+      tabs.append(t);
     });
-    pageEl = h("main", { class: "main", id: "page" });
-    const out = h("button", { class: "btn btn-quiet btn-small signout", type: "button", onclick: logout }, icon("logout"), h("span", { text: "Sign out" }));
-    const side = h("aside", { class: "side" },
-      h("div", { class: "side-head" }, h("span", { class: "brand" }, V.logo(), h("span", { text: sess.name || "Veyl" })), h("span", { class: "who", text: sess.host || "" }), out),
-      nav,
-      h("div", { class: "side-foot" }, h("button", { class: "btn btn-quiet btn-small", type: "button", onclick: logout }, icon("logout"), h("span", { text: "Sign out" })), h("p", { class: "foot", text: "Veyl " + (sess.version || "") }))
+    content = h("div", { class: "app-content" });
+    const aside = h("aside", { class: "app-aside" },
+      h("div", { class: "nav-only-desktop stack" },
+        h("div", { class: "stack stack-xs" }, h("p", { class: "heading-sm", text: sess.name || "Veyl" }), h("p", { class: "text-sm text-subtle", text: sess.host || "" })),
+        side
+      ),
+      h("div", { class: "nav-only-mobile" }, tabs)
     );
-    clear(app).append(h("div", { class: "shell" }, side, pageEl));
+    clear(app).append(h("div", { class: "app-layout" }, aside, content));
+    setNavActions([
+      h("span", { class: "nav-meta", text: sess.host || "" }),
+      B.button("Sign out", { variant: "secondary", size: "sm", icon: "logout", onClick: logout })
+    ]);
+    if (footerVersion) footerVersion.textContent = "Veyl " + (sess.version || "");
     route();
   }
 
   function route() {
     const want = location.hash.replace(/^#/, "");
     page = PAGES.some((p) => p[0] === want) ? want : "overview";
-    Object.keys(navBtns).forEach((k) => {
-      if (k === page) navBtns[k].setAttribute("aria-current", "page");
-      else navBtns[k].removeAttribute("aria-current");
+    links.forEach((a) => {
+      if (a.getAttribute("data-page") === page) a.setAttribute("aria-current", "page");
+      else a.removeAttribute("aria-current");
     });
-    if (navBtns[page] && navBtns[page].scrollIntoView) navBtns[page].scrollIntoView({ block: "nearest", inline: "nearest" });
+    const tab = links.find((a) => a.classList.contains("tab") && a.getAttribute("data-page") === page);
+    if (tab && tab.scrollIntoView && window.innerWidth < 1024) tab.scrollIntoView({ block: "nearest", inline: "center" });
     clearInterval(poll);
-    const fn = { overview, accounts, invites, settings, security, backup }[page];
-    fn();
+    stopWave();
+    ({ overview, accounts, invites, settings, security, backup })[page]();
   }
 
   window.addEventListener("hashchange", () => { if (sess && sess.authenticated) route(); });
 
-  function pageShell(title, sub, right) {
-    clear(pageEl);
-    const p = h("div", { class: "page" }, h("div", { class: "page-head" }, h("div", null, h("h1", { text: title }), sub ? h("p", { text: sub }) : null), right || null));
-    pageEl.append(p);
-    window.scrollTo(0, 0);
-    return p;
+  function stopWave() {
+    if (wave) wave.stop();
+    wave = null;
   }
 
-  function loading(p) {
-    const l = h("div", { class: "empty" }, V.spinner());
-    p.append(l);
+  function pageShell(heading, lead, right) {
+    clear(content);
+    const head = h("header", { class: "page-header" },
+      h("div", { class: "page-header-text" }, Array.isArray(heading) ? title(heading[0], heading[1]) : title(heading), lead ? h("p", { class: "text-lede", text: lead }) : null),
+      right ? h("div", { class: "cluster" }, right) : null
+    );
+    const body = h("div", { class: "page-body" });
+    const p = h("div", { class: "rise" }, head, body);
+    content.append(p);
+    window.scrollTo(0, 0);
+    return { el: p, head, body };
+  }
+
+  function loading(body) {
+    const l = h("div", { class: "loading" }, B.spinner());
+    body.append(l);
     return l;
   }
 
@@ -197,425 +222,435 @@
 
   function fmt(n) { return Number(n || 0).toLocaleString(); }
 
-  function graph() {
-    const g = h("div", { class: "graph", "aria-hidden": "true" });
-    const cols = 32;
-    const data = samples.slice(-cols);
-    const max = Math.max(4, ...data);
-    for (let i = 0; i < cols - data.length; i++) g.append(h("div", { class: "col empty" }, h("i")));
-    data.forEach((v) => {
-      const n = v === 0 ? 0 : Math.max(1, Math.round((v / max) * 8));
-      const col = h("div", { class: "col" + (n === 0 ? " empty" : "") });
-      if (n === 0) col.append(h("i"));
-      for (let i = 0; i < n; i++) col.append(h("i", { class: i === 0 && n > 1 ? "mid" : "" }));
-      g.append(col);
-    });
-    return g;
+  function stat(label, value, unit) {
+    const v = h("div", { class: "stat-value", text: value });
+    if (unit) v.append(h("span", { class: "stat-unit", text: unit }));
+    return h("div", { class: "stat" }, h("div", { class: "stat-label", text: label }), v);
   }
 
   const SYS = [
-    ["os", "System"],
-    ["public_ip", "Public IP"],
-    ["public_ipv6", "Public IPv6"],
-    ["openvpn", "OpenVPN"],
-    ["openssl", "OpenSSL"],
-    ["load", "Load"],
-    ["mem", "Memory"],
-    ["disk", "Disk"],
-    ["uptime", "Server uptime"]
+    ["os", "system"],
+    ["platform", "platform"],
+    ["public_ip", "public-ip"],
+    ["public_ipv6", "public-ipv6"],
+    ["openvpn", "openvpn"],
+    ["openssl", "openssl"],
+    ["load", "load"],
+    ["mem", "memory"],
+    ["disk", "disk"],
+    ["uptime", "server-uptime"]
   ];
 
-  function jobBanner(p, kind) {
-    const list = V.progressList();
-    const bar = h("div", { class: "bar" }, h("i"));
-    const title = h("h3", { text: kind === "dns-update" ? "Updating blocklists" : "Applying changes" });
-    const card = h("div", { class: "card stack" }, title, bar, list.el);
-    p.insertBefore(card, p.children[1] || null);
-    V.stream("/v1/admin/apply-progress", (ev) => list.step(ev), (d) => {
-      list.settle(!!(d && d.ok));
-      bar.className = "bar " + (d && d.ok ? "done" : "fail");
-      title.textContent = d && d.ok ? "All done" : "Something didn't finish";
-      if (d && !d.ok) card.append(V.callout("err", "", d.error || "Lost contact with the server."));
-      V.toast(d && d.ok ? "Done" : "That didn't finish", d && d.ok ? "" : "err");
-      setTimeout(() => { if (d && d.ok) card.remove(); }, 4000);
+  function jobCard(p, kind) {
+    const list = B.progress();
+    const bar = B.progressBar();
+    const heading = h("h2", { class: "card-title", text: kind === "dns-update" ? "Updating blocklists" : "Applying changes" });
+    const card = h("section", { class: "card surface-card" }, h("div", { class: "stack" }, heading, bar.el, list.el));
+    p.body.insertBefore(card, p.body.firstChild);
+    B.stream("/v1/admin/apply-progress", (ev) => list.step(ev), (d) => {
+      const ok = !!(d && d.ok);
+      list.settle(ok);
+      if (ok) bar.done(); else bar.fail();
+      heading.textContent = ok ? "All done" : "Something didn't finish";
+      if (!ok) card.firstChild.append(B.callout("danger", "", (d && d.error) || "Lost contact with the server."));
+      B.toast(ok ? "Done" : "That didn't finish", ok ? "" : "err");
+      setTimeout(() => { if (ok) card.remove(); }, 4000);
     });
   }
 
+  function serviceState(s) {
+    if (s.state === "active") return ["is-ok", "Running", "badge-ok"];
+    if (s.state === "inactive" || s.state === "disabled") return ["", s.state === "disabled" ? "Off" : "Stopped", ""];
+    if (s.state === "activating" || s.state === "reloading") return ["is-warn", "Starting", "badge-warn"];
+    return ["is-danger", s.state === "failed" ? "Failed" : s.state, "badge-danger"];
+  }
+
+  function healthy(o) {
+    return o.services.length > 0 && o.services.every((s) => s.state === "active" || s.state === "inactive" || s.state === "disabled");
+  }
+
   async function overview() {
-    const p = pageShell("Overview", (sess.name || "Veyl") + (sess.host ? " · " + sess.host : ""));
-    const l = loading(p);
+    const p = pageShell([sess.name || "Veyl", "at a glance."], "Live while this page is open. Nothing is stored.");
+    const l = loading(p.body);
     const r = await api("GET", "/v1/admin/overview");
     if (!r.ok || page !== "overview") return;
     l.remove();
     const o = r.data;
+    learnPlatform(o);
     samples.push(o.connected);
     if (samples.length > 64) samples.shift();
-    const tiles = h("div", { class: "tiles" },
-      h("div", { class: "tile hero" }, h("div", { class: "k" }, h("span", { class: "dot on" }), "Connected now"), h("div", { class: "v", text: fmt(o.connected) }), graph(), h("div", { class: "s", text: "Live while this page is open. Nothing is stored." })),
-      h("div", { class: "tile" }, h("div", { class: "k", text: "Accounts" }), h("div", { class: "v", text: fmt(o.accounts) })),
-      h("div", { class: "tile" }, h("div", { class: "k", text: "Devices" }), h("div", { class: "v", text: fmt(o.devices) })),
-      h("div", { class: "tile" }, h("div", { class: "k", text: "Running for" }), h("div", { class: "v", text: uptime(o.uptime) })),
-      h("div", { class: "tile" }, h("div", { class: "k", text: "Stealth" }), h("div", { class: "v", text: o.stealth ? "On" : "Off" }))
+    const good = healthy(o);
+    clear(p.head.querySelector("h1")).append(o.name || sess.name || "Veyl", " ", h("span", { class: "text-dim", text: good ? "is running." : (o.services.length ? "needs a look." : "at a glance.") }));
+
+    const canvas = h("canvas", { class: "pixel-wave", "aria-hidden": "true" });
+    const connected = h("div", { class: "text-headline tabular", text: fmt(o.connected) });
+    const status = h("p", { class: "row text-sm text-muted" }, h("span", { class: "dot " + (good ? "is-ok is-live" : o.services.length ? "is-warn" : ""), "aria-hidden": "true" }), h("span", { text: good ? "All services running" : o.services.length ? "A service needs attention" : "Waiting for the system agent" }));
+    const stealthValue = o.stealth ? (windows() ? "Port " + B.state.stealthPort : "On") : "Off";
+    const hero = h("section", { class: "card surface-card card-glow-bottom", "aria-label": "Live status" },
+      h("div", { class: "grid-2" },
+        h("div", { class: "stack" },
+          h("p", { class: "label text-subtle", text: "Connected now" }),
+          connected,
+          status
+        ),
+        canvas
+      ),
+      h("div", { class: "stat-grid mt-8" },
+        stat("Accounts", fmt(o.accounts)),
+        stat("Devices", fmt(o.devices)),
+        stat("Running for", uptime(o.uptime)),
+        stat("Stealth", stealthValue)
+      )
     );
-    const svc = h("div", { class: "card" }, h("h3", { text: "Services" }));
-    if (!o.services.length) svc.append(h("p", { class: "hint", text: "The system agent didn't answer. Service status will show when it's running." }));
+
+    const svc = h("section", { class: "card card-flush surface-panel", "aria-labelledby": "svc-title" }, h("div", { class: "card-head" }, h("h2", { id: "svc-title", text: "Services" })));
+    const svcList = h("div", { class: "list" });
+    if (!o.services.length) svcList.append(h("p", { class: "list-item text-muted", text: "The system agent didn't answer. Service status shows when it's running." }));
     o.services.forEach((s) => {
-      const good = s.state === "active";
-      const off = s.state === "inactive" || s.state === "disabled";
-      svc.append(h("div", { class: "svc" }, h("span", { class: "dot " + (good ? "on" : off ? "" : "off") }), h("span", { class: "n", text: s.name }), h("span", { class: "s", text: good ? "Running" : s.state })));
+      const [dot, label, badge] = serviceState(s);
+      svcList.append(h("div", { class: "list-item" }, h("span", { class: "dot " + dot, "aria-hidden": "true" }), h("span", { class: "grow text-mono text-sm", text: s.name }), h("span", { class: "badge " + badge, text: label })));
     });
-    const sys = h("div", { class: "list" });
-    sys.append(h("div", { class: "list-row" }, h("div", { class: "k", text: "Veyl" }), h("div", { class: "v", text: o.version })));
+    svc.append(svcList);
+
+    const sys = h("dl", { class: "kv kv-mono" });
+    sys.append(h("div", { class: "kv-row" }, h("dt", { class: "kv-key is-accent", text: "veyl" }), h("dd", { class: "kv-value", text: o.version })));
     SYS.forEach(([k, label]) => {
-      const v = o.system[k];
+      const v = k === "platform" ? (o.system[k] || o.platform) : o.system[k];
       if (!v) return;
-      sys.append(h("div", { class: "list-row" }, h("div", { class: "k", text: label }), h("div", { class: "v", text: k === "uptime" ? uptime(v) : v })));
+      sys.append(h("div", { class: "kv-row" }, h("dt", { class: "kv-key" + (k === "public_ip" ? " is-accent" : ""), text: label }), h("dd", { class: "kv-value", text: k === "uptime" ? uptime(v) : v })));
     });
-    if (o.cert_expiry) sys.append(h("div", { class: "list-row" }, h("div", { class: "k", text: "Certificate" }), h("div", { class: "v", text: "Renews automatically · expires " + o.cert_expiry })));
-    const bl = h("div", { class: "list" });
+    if (o.cert_expiry) sys.append(h("div", { class: "kv-row" }, h("dt", { class: "kv-key", text: "certificate" }), h("dd", { class: "kv-value", text: "renews automatically, expires " + o.cert_expiry })));
+    const server = h("section", { class: "card card-flush surface-panel", "aria-labelledby": "sys-title" }, h("div", { class: "card-head" }, h("h2", { id: "sys-title", text: "Server" })), sys);
+
+    const tbody = h("tbody");
     o.blocklists.forEach((b) => {
-      bl.append(h("div", { class: "list-row" }, h("div", { class: "k", text: (CATS[b.category] || [b.category])[0] }), h("div", { class: "v", text: b.entries ? fmt(b.entries) + " sites" : "Not downloaded yet" }), h("span", { class: "muted small", text: b.updated || "" })));
+      tbody.append(h("tr", null,
+        h("td", { class: "is-strong", text: (CATS[b.category] || [b.category])[0] }),
+        h("td", { class: "is-num", text: b.entries ? fmt(b.entries) : "Not yet" }),
+        h("td", { class: "text-sm", text: b.updated || "" })
+      ));
     });
-    const upd = h("button", { class: "btn btn-ghost btn-small", type: "button" }, icon("refresh"), h("span", { text: "Update now" }));
-    upd.addEventListener("click", () => V.busy(upd, async () => {
+    const upd = B.button("Update now", { variant: "secondary", size: "sm", icon: "refresh", onClick: async () => {
       const x = await api("POST", "/v1/admin/dns/update", {});
-      if (!x.ok) { V.toast(x.error, "err"); return; }
-      jobBanner(p, "dns-update");
-    }));
-    p.append(tiles,
-      h("div", { class: "grid-2" }, svc, h("div", { class: "stack" }, h("p", { class: "card-title", text: "Server" }), sys)),
-      h("div", { class: "stack" }, h("div", { class: "row" }, h("p", { class: "card-title grow", text: "Blocklists" }), upd), bl)
+      if (!x.ok) { B.toast(x.error, "err"); return; }
+      jobCard(p, "dns-update");
+    } });
+    const lists = h("section", { class: "card card-flush surface-panel", "aria-labelledby": "bl-title" },
+      h("div", { class: "card-head" }, h("h2", { id: "bl-title", text: "Blocklists" }), upd),
+      h("div", { class: "table-wrap" }, h("table", { class: "table" }, h("thead", null, h("tr", null, h("th", { scope: "col", text: "Category" }), h("th", { scope: "col", class: "is-num", text: "Sites" }), h("th", { scope: "col", text: "Updated" }))), tbody))
     );
-    if (o.job && o.job.running) jobBanner(p, o.job.kind);
+
+    p.body.append(hero, h("div", { class: "grid-2" }, svc, server), lists);
+    wave = B.pixelWave(canvas, good);
+    if (o.job && o.job.running) jobCard(p, o.job.kind);
     poll = setInterval(async () => {
       if (page !== "overview" || document.hidden) return;
       const x = await api("GET", "/v1/admin/overview");
       if (!x.ok || page !== "overview") return;
       samples.push(x.data.connected);
       if (samples.length > 64) samples.shift();
-      const hero = tiles.querySelector(".tile.hero");
-      hero.querySelector(".v").textContent = fmt(x.data.connected);
-      hero.replaceChild(graph(), hero.querySelector(".graph"));
+      connected.textContent = fmt(x.data.connected);
+      if (wave) wave.set(healthy(x.data));
     }, 15000);
   }
 
   function avatar(id) {
-    const px = h("div", { class: "pixels" });
+    const px = h("span", { class: "avatar", "aria-hidden": "true" });
     let n = parseInt(String(id).slice(0, 6), 16) || 7;
     for (let i = 0; i < 9; i++) {
-      px.append(h("i", { class: n & 1 ? "on" : (n & 2 ? "mid" : "") }));
+      px.append(h("i", { class: n & 1 ? "is-on" : (n & 2 ? "is-mid" : "") }));
       n = n >> 1 || 5;
     }
-    return h("div", { class: "avatar" }, px);
+    return px;
   }
 
   function statusBadge(s) {
-    if (s === "disabled") return h("span", { class: "badge badge-red", text: "Paused" });
-    if (s === "expired") return h("span", { class: "badge badge-orange", text: "Expired" });
-    return h("span", { class: "badge badge-green", text: "Active" });
+    if (s === "disabled") return h("span", { class: "badge badge-danger", text: "Paused" });
+    if (s === "expired") return h("span", { class: "badge badge-warn", text: "Expired" });
+    return h("span", { class: "badge badge-ok", text: "Active" });
+  }
+
+  function emptyState(text, action) {
+    return h("div", { class: "card surface-quiet" }, h("div", { class: "empty" }, B.mark(), h("p", { class: "empty-title", text }), action));
   }
 
   async function accounts() {
-    const add = h("button", { class: "btn btn-primary", type: "button", onclick: newAccount }, icon("plus"), h("span", { text: "New account" }));
-    const p = pageShell("Accounts", "Everyone who can connect to your VPN.", add);
-    const l = loading(p);
+    const add = B.button("New account", { icon: "plus", async: false, onClick: newAccount });
+    const p = pageShell(["Accounts", "and devices."], "Everyone who can connect to your VPN.", add);
+    const l = loading(p.body);
     const r = await api("GET", "/v1/admin/accounts");
     if (!r.ok || page !== "accounts") return;
     l.remove();
     const all = r.data.accounts;
     if (!all.length) {
-      p.append(h("div", { class: "card empty" }, emptyPixels(), h("p", { text: "No accounts yet." }), h("button", { class: "btn btn-ghost", type: "button", onclick: newAccount }, icon("plus"), "Create the first one")));
+      p.body.append(emptyState("No accounts yet.", B.button("Create the first one", { variant: "secondary", icon: "plus", async: false, onClick: newAccount })));
       return;
     }
-    const q = h("input", { class: "input", type: "search", placeholder: "Search by name", "aria-label": "Search accounts" });
-    const list = h("div", { class: "stack" });
+    const q = B.input({ type: "search", placeholder: "Search by name", "aria-label": "Search accounts" });
+    const list = h("div", { class: "list" });
     const draw = () => {
       clear(list);
       const term = q.value.trim().toLowerCase();
       const shown = all.filter((a) => !term || (a.label || "").toLowerCase().includes(term) || a.id.includes(term));
-      if (!shown.length) list.append(h("p", { class: "muted center", text: "No matches." }));
-      shown.forEach((a) => list.append(accountCard(a)));
+      if (!shown.length) list.append(h("p", { class: "list-item text-muted", text: "No matches." }));
+      shown.forEach((a) => list.append(accountRow(a)));
     };
     q.addEventListener("input", draw);
-    if (all.length > 4) p.append(h("div", { class: "search" }, icon("search"), q));
-    p.append(list);
+    if (all.length > 4) p.body.append(q);
+    p.body.append(h("section", { class: "card card-flush surface-panel", "aria-label": "Accounts" }, list));
     draw();
   }
 
-  function emptyPixels() {
-    const px = h("div", { class: "pixels" });
-    "on,off,mid,off,on,off,off,mid,off,on,off,mid,mid,off,on,off,mid,off".split(",").forEach((k) => px.append(h("i", { class: k === "off" ? "" : k })));
-    return px;
-  }
-
-  function accountCard(a) {
+  function accountRow(a) {
     const name = a.label || "Account " + a.id.slice(0, 4).toUpperCase();
-    const exp = a.expires ? (a.status === "expired" ? "Expired " : "Expires ") + V.date(a.expires) : "Never expires";
-    const devs = h("div", { class: "devs hidden" });
-    const devBtn = h("button", { class: "btn btn-ghost btn-small", type: "button", "aria-expanded": "false" }, icon("phone"), h("span", { text: "Devices" }));
-    devBtn.addEventListener("click", async () => {
-      const open = devs.classList.toggle("hidden") === false;
+    const exp = a.expires ? (a.status === "expired" ? "Expired " : "Expires ") + B.date(a.expires) : "Never expires";
+    const devs = h("div", { class: "list-item-sub is-hidden" });
+    const devBtn = h("button", { class: "btn btn-quiet", type: "button", "aria-expanded": "false" }, icon("phone"), h("span", { text: "Devices" }));
+    devBtn.addEventListener("click", () => {
+      const open = devs.classList.toggle("is-hidden") === false;
       devBtn.setAttribute("aria-expanded", open ? "true" : "false");
       if (open) loadDevices(a, devs);
     });
-    const pause = h("button", { class: "btn btn-ghost btn-small", type: "button" }, icon(a.disabled ? "play" : "pause"), h("span", { text: a.disabled ? "Resume" : "Pause" }));
-    pause.addEventListener("click", () => V.busy(pause, async () => {
+    const pause = h("button", { class: "btn btn-quiet", type: "button" }, icon(a.disabled ? "play" : "pause"), h("span", { text: a.disabled ? "Resume" : "Pause" }));
+    pause.addEventListener("click", () => B.busy(pause, async () => {
       const r = await api("PATCH", "/v1/admin/accounts/" + a.id, { disabled: !a.disabled });
-      if (!r.ok) { V.toast(r.error, "err"); return; }
-      V.toast(a.disabled ? "Account resumed" : "Account paused. Its devices were disconnected.");
+      if (!r.ok) { B.toast(r.error, "err"); return; }
+      B.toast(a.disabled ? "Account resumed" : "Account paused. Its devices were disconnected.");
       accounts();
     }));
-    const expBtn = h("button", { class: "btn btn-ghost btn-small", type: "button", onclick: () => expiryDlg(a) }, icon("clock"), h("span", { text: "Expiry" }));
-    const del = h("button", { class: "btn btn-quiet btn-small", type: "button", "aria-label": "Delete " + name }, icon("trash"), h("span", { text: "Delete" }));
+    const expBtn = h("button", { class: "btn btn-quiet", type: "button", onclick: () => expiryDialog(a) }, icon("clock"), h("span", { text: "Expiry" }));
+    const del = h("button", { class: "btn btn-quiet", type: "button", "aria-label": "Delete " + name }, icon("trash"), h("span", { text: "Delete" }));
     del.addEventListener("click", async () => {
-      if (!(await confirmDlg("Delete " + name + "?", "This removes the account and disconnects all of its devices. It can't be undone.", "Delete account", true))) return;
+      if (!(await B.confirm("Delete " + name + "?", "This removes the account and disconnects all of its devices. It can't be undone.", "Delete account", true))) return;
       const r = await api("DELETE", "/v1/admin/accounts/" + a.id);
-      if (!r.ok) { V.toast(r.error, "err"); return; }
-      V.toast("Account deleted");
+      if (!r.ok) { B.toast(r.error, "err"); return; }
+      B.toast("Account deleted");
       accounts();
     });
-    return h("div", { class: "acct" },
-      h("div", { class: "acct-top" }, avatar(a.id), h("div", { class: "grow" }, h("div", { class: "name", text: name }), h("div", { class: "meta", text: a.devices + " of " + a.max_devices + " devices" + (a.online ? " · " + a.online + " online" : "") + " · " + exp })), statusBadge(a.status)),
-      h("div", { class: "acct-actions" }, devBtn, pause, expBtn, del),
+    const meta = a.devices + " of " + a.max_devices + " devices" + (a.online ? ", " + a.online + " online" : "") + ". " + exp + ".";
+    return h("div", { class: "account list-group" },
+      h("div", { class: "list-item is-stacked" },
+        avatar(a.id),
+        h("div", { class: "grow" }, h("div", { class: "row" }, h("span", { class: "list-item-title", text: name }), statusBadge(a.status)), h("div", { class: "list-item-meta", text: meta })),
+        h("div", { class: "list-item-actions" }, devBtn, pause, expBtn, del)
+      ),
       devs
     );
   }
 
   async function loadDevices(a, box) {
-    clear(box).append(h("div", { class: "dev" }, V.spinner(), h("span", { class: "muted", text: "Loading devices…" })));
+    clear(box).append(h("div", { class: "row text-sm text-muted" }, B.spinner(), h("span", { text: "Loading devices" })));
     const r = await api("GET", "/v1/admin/accounts/" + a.id + "/devices");
     clear(box);
-    if (!r.ok) { box.append(V.callout("err", "", r.error)); return; }
-    if (!r.data.devices.length) { box.append(h("p", { class: "hint", text: "No devices yet. They appear here after signing in with the app." })); return; }
+    if (!r.ok) { box.append(B.callout("danger", "", r.error)); return; }
+    if (!r.data.devices.length) { box.append(h("p", { class: "field-hint", text: "No devices yet. They show up here after signing in with the app." })); return; }
+    const list = h("div", { class: "card card-flush surface-quiet card-sm" }, h("div", { class: "list" }));
     r.data.devices.forEach((d) => {
-      const rm = h("button", { class: "btn btn-quiet btn-small", type: "button", "aria-label": "Remove " + d.name }, icon("x"), h("span", { text: "Remove" }));
+      const rm = h("button", { class: "btn btn-quiet", type: "button", "aria-label": "Remove " + d.name }, icon("x"), h("span", { text: "Remove" }));
       rm.addEventListener("click", async () => {
-        if (!(await confirmDlg("Remove " + d.name + "?", "It's disconnected right away and can't connect again until it signs in.", "Remove device", true))) return;
+        if (!(await B.confirm("Remove " + d.name + "?", "It's disconnected right away and can't connect again until it signs in.", "Remove device", true))) return;
         const x = await api("DELETE", "/v1/admin/accounts/" + a.id + "/devices/" + encodeURIComponent(d.id));
-        if (!x.ok) { V.toast(x.error, "err"); return; }
-        V.toast("Device removed");
+        if (!x.ok) { B.toast(x.error, "err"); return; }
+        B.toast("Device removed");
         loadDevices(a, box);
       });
-      box.append(h("div", { class: "dev" }, h("span", { class: "dot " + (d.online ? "on" : "") }), h("div", { class: "n" }, h("div", { text: d.name }), h("div", { class: "m", text: (d.online ? "Online now · " : "") + "Added " + V.date(d.created) })), rm));
+      list.firstChild.append(h("div", { class: "list-item" }, h("span", { class: "dot " + (d.online ? "is-ok" : ""), "aria-hidden": "true" }), h("div", { class: "grow" }, h("div", { class: "list-item-title", text: d.name }), h("div", { class: "list-item-meta", text: (d.online ? "Online now. " : "") + "Added " + B.date(d.created) })), rm));
     });
+    box.append(list);
   }
 
   const EXPIRY = [[0, "Never"], [30, "In 30 days"], [90, "In 90 days"], [365, "In 1 year"]];
 
-  function expiryDlg(a) {
-    const sel = selectEl(EXPIRY, a.expires ? 30 : 0);
-    const err = errSlot();
-    const save = h("button", { class: "btn btn-primary", type: "button", text: "Save" });
-    const cancel = h("button", { class: "btn btn-ghost", type: "button", text: "Cancel" });
-    const d = dialog("When should it expire?", [field("Expires", sel, a.expires ? "Currently " + V.date(a.expires) + "." : "Currently never."), err], [cancel, save]);
-    cancel.addEventListener("click", () => d.close());
-    save.addEventListener("click", () => V.busy(save, async () => {
+  function expiryDialog(a) {
+    const sel = B.select(EXPIRY, a.expires ? 30 : 0);
+    const err = B.errorSlot();
+    const cancel = B.button("Cancel", { variant: "secondary", async: false, onClick: () => d.close() });
+    const save = B.button("Save", { onClick: async () => {
       const r = await api("PATCH", "/v1/admin/accounts/" + a.id, { expires_days: Number(sel.value) });
-      if (!r.ok) { showErr(err, r.error); return; }
+      if (!r.ok) { B.showError(err, r.error); return; }
       d.close();
-      V.toast("Expiry updated");
+      B.toast("Expiry updated");
       accounts();
-    }));
+    } });
+    const d = B.dialog("When should it expire?", [B.field("Expires", sel, a.expires ? "Currently " + B.date(a.expires) + "." : "Currently never."), err], [cancel, save]);
   }
 
   function newAccount() {
-    const label = h("input", { class: "input", type: "text", maxlength: "40", placeholder: "e.g. Mum's phone", autocomplete: "off" });
-    const exp = selectEl(EXPIRY, 0);
-    const lim = selectEl([[0, "Server default"], ...Array.from({ length: 20 }, (_, i) => [i + 1, String(i + 1)])], 0);
-    const pw = V.passwordField({ id: "na-pw", label: "Password (optional)", min: 10, hint: "Leave empty to let them choose one in the app." });
-    const err = errSlot();
-    const create = h("button", { class: "btn btn-primary", type: "button", text: "Create account" });
-    const cancel = h("button", { class: "btn btn-ghost", type: "button", text: "Cancel" });
-    const d = dialog("New account", [field("Name", label, "Only you see this."), h("div", { class: "grid-2" }, field("Expires", exp), field("Devices", lim)), pw.field, err], [cancel, create]);
-    cancel.addEventListener("click", () => d.close());
-    create.addEventListener("click", () => V.busy(create, async () => {
-      if (pw.input.value && !pw.valid()) { showErr(err, "Passwords need at least 10 characters."); return; }
+    const label = B.input({ maxlength: "40", placeholder: "Mum's phone", autocomplete: "off" });
+    const exp = B.select(EXPIRY, 0);
+    const lim = B.select([[0, "Server default"], ...Array.from({ length: 20 }, (_, i) => [i + 1, String(i + 1)])], 0);
+    const pw = B.passwordField({ id: "na-pw", label: "Password (optional)", min: 10, hint: "Leave it empty to let them choose one in the app." });
+    const err = B.errorSlot();
+    const cancel = B.button("Cancel", { variant: "secondary", async: false, onClick: () => d.close() });
+    const create = B.button("Create account", { onClick: async () => {
+      if (pw.input.value && !pw.valid()) { B.showError(err, "Passwords need at least 10 characters."); return; }
       const r = await api("POST", "/v1/admin/accounts", { label: label.value.trim(), expires_days: Number(exp.value), limit: Number(lim.value), password: pw.input.value });
-      if (!r.ok) { showErr(err, r.error); return; }
+      if (!r.ok) { B.showError(err, r.error); return; }
       d.close();
-      secretDlg("Account created", r.data.number, "Share this account number with them. It's shown only once.", true);
+      secretDialog("Account created", r.data.number, "Share this account number with them. It's shown only once.", true);
       accounts();
-    }));
+    } });
+    const d = B.dialog("New account", [B.field("Name", label, "Only you see this."), h("div", { class: "grid-2" }, B.field("Expires", exp), B.field("Devices", lim)), pw.field, err], [cancel, create]);
     label.focus();
   }
 
   async function invites() {
-    const add = h("button", { class: "btn btn-primary", type: "button", onclick: newInvite }, icon("plus"), h("span", { text: "New invite" }));
-    const p = pageShell("Invites", "Codes that let someone create their own account.", add);
-    const l = loading(p);
+    const add = B.button("New invite", { icon: "plus", async: false, onClick: newInvite });
+    const p = pageShell(["Invites", "for new people."], "Codes that let someone create their own account.", add);
+    const l = loading(p.body);
     const r = await api("GET", "/v1/admin/invites");
     if (!r.ok || page !== "invites") return;
     l.remove();
-    if (r.data.registration === "closed") p.append(V.callout("warn", "Invites are switched off", "\"Who can join\" is set to only accounts you create. Change it in Settings to use invites."));
+    if (r.data.registration === "closed") p.body.append(B.callout("warn", "Invites are switched off", "\"Who can join\" is set to only accounts you create. Change it in Settings to use invites."));
     const inv = r.data.invites;
     if (!inv.length) {
-      p.append(h("div", { class: "card empty" }, emptyPixels(), h("p", { text: "No open invites." }), h("button", { class: "btn btn-ghost", type: "button", onclick: newInvite }, icon("plus"), "Make an invite")));
+      p.body.append(emptyState("No open invites.", B.button("Make an invite", { variant: "secondary", icon: "plus", async: false, onClick: newInvite })));
       return;
     }
     const list = h("div", { class: "list" });
     inv.forEach((i) => {
-      const del = h("button", { class: "btn btn-quiet btn-small", type: "button", "aria-label": "Delete invite" }, icon("trash"));
+      const del = h("button", { class: "btn btn-quiet btn-icon", type: "button", "aria-label": "Delete invite" }, icon("trash"));
       del.addEventListener("click", async () => {
-        if (!(await confirmDlg("Delete this invite?", "The code stops working right away.", "Delete invite", true))) return;
+        if (!(await B.confirm("Delete this invite?", "The code stops working right away.", "Delete invite", true))) return;
         const x = await api("DELETE", "/v1/admin/invites/" + i.id);
-        if (!x.ok) { V.toast(x.error, "err"); return; }
-        V.toast("Invite deleted");
+        if (!x.ok) { B.toast(x.error, "err"); return; }
+        B.toast("Invite deleted");
         invites();
       });
-      const exp = i.expires ? "expires " + V.date(i.expires) : "never expires";
-      list.append(h("div", { class: "list-row" },
-        h("div", { class: "grow" }, h("div", { class: "v", text: "Invite " + i.id.slice(0, 4).toUpperCase() }), h("div", { class: "muted small", text: "Made " + V.date(i.created) + " · " + exp })),
-        h("span", { class: "badge badge-mint", text: i.used + " / " + i.uses + " used" }),
+      const exp = i.expires ? "expires " + B.date(i.expires) : "never expires";
+      list.append(h("div", { class: "list-item" },
+        h("span", { class: "icon-tile", "aria-hidden": "true" }, icon("ticket")),
+        h("div", { class: "grow" }, h("div", { class: "list-item-title text-mono", text: "Invite " + i.id.slice(0, 4).toUpperCase() }), h("div", { class: "list-item-meta", text: "Made " + B.date(i.created) + ", " + exp })),
+        h("span", { class: "badge " + (i.used >= i.uses ? "" : "badge-violet"), text: i.used + " of " + i.uses + " used" }),
         del
       ));
     });
-    p.append(list);
+    p.body.append(h("section", { class: "card card-flush surface-panel", "aria-label": "Invites" }, list));
   }
 
   function newInvite() {
-    let uses = 1;
-    const out = h("output", { text: "1" });
-    const minus = h("button", { type: "button", "aria-label": "Fewer", text: "−" });
-    const plus = h("button", { type: "button", "aria-label": "More", text: "+" });
-    const sync = () => { out.textContent = String(uses); minus.disabled = uses <= 1; plus.disabled = uses >= 100; };
-    minus.addEventListener("click", () => { uses--; sync(); });
-    plus.addEventListener("click", () => { uses++; sync(); });
-    sync();
-    const exp = selectEl([[7, "In 7 days"], [30, "In 30 days"], [0, "Never"]], 7);
-    const err = errSlot();
-    const create = h("button", { class: "btn btn-primary", type: "button", text: "Create invite" });
-    const cancel = h("button", { class: "btn btn-ghost", type: "button", text: "Cancel" });
-    const d = dialog("New invite", [
-      h("div", { class: "toggle-row" }, h("div", { class: "txt" }, h("div", { class: "t", text: "How many people" }), h("div", { class: "d", text: "Each person uses it once." })), h("div", { class: "stepper" }, minus, out, plus)),
-      field("Expires", exp),
+    const uses = B.stepper(1, 1, 100, "people");
+    const exp = B.select([[7, "In 7 days"], [30, "In 30 days"], [0, "Never"]], 7);
+    const err = B.errorSlot();
+    const cancel = B.button("Cancel", { variant: "secondary", async: false, onClick: () => d.close() });
+    const create = B.button("Create invite", { onClick: async () => {
+      const r = await api("POST", "/v1/admin/invites", { uses: uses.value(), expires_days: Number(exp.value) });
+      if (!r.ok) { B.showError(err, r.error); return; }
+      d.close();
+      secretDialog("Invite ready", r.data.code, "Send this code with your server address. It's shown only once.", false);
+      invites();
+    } });
+    const d = B.dialog("New invite", [
+      h("div", { class: "setting-list" }, B.settingRow("How many people", "Each person uses it once.", uses.el)),
+      B.field("Expires", exp),
       err
     ], [cancel, create]);
-    cancel.addEventListener("click", () => d.close());
-    create.addEventListener("click", () => V.busy(create, async () => {
-      const r = await api("POST", "/v1/admin/invites", { uses, expires_days: Number(exp.value) });
-      if (!r.ok) { showErr(err, r.error); return; }
-      d.close();
-      secretDlg("Invite ready", r.data.code, "Send this code with your server address. It's shown only once.", false);
-      invites();
-    }));
+  }
+
+  function stealthText() {
+    if (windows()) return "Adds a TCP fallback on port " + B.state.stealthPort + " for networks that block VPNs.";
+    return "Runs a second VPN on port 443, like normal web traffic. Works on networks that block VPNs.";
   }
 
   async function settings() {
-    const p = pageShell("Settings", "Changes that affect the server are applied right away.");
-    const l = loading(p);
+    const p = pageShell(["Settings", "for this server."], "Changes that affect the server apply right away.");
+    const l = loading(p.body);
+    await ensurePlatform();
     const r = await api("GET", "/v1/admin/settings");
     if (!r.ok || page !== "settings") return;
     l.remove();
     const s = r.data.settings;
     const pqOK = r.data.pq_available;
-    const err = errSlot();
-    const name = h("input", { class: "input", type: "text", maxlength: "40", value: s.name });
-    const host = h("input", { class: "input", type: "text", value: s.host, autocapitalize: "off", spellcheck: "false", inputmode: "url" });
-    const email = h("input", { class: "input", type: "email", value: s.acme_email, placeholder: "Optional" });
-    const appUrl = h("input", { class: "input", type: "url", value: s.app_url, placeholder: "https://" });
-    const port = h("input", { class: "input", type: "number", min: "1024", max: "65535", value: String(s.udp_port), inputmode: "numeric" });
-    const stealth = V.toggleRow("Stealth mode", "Works on networks that block VPNs. Uses port 443 like normal websites.", s.stealth);
-    const v6 = V.toggleRow("IPv6", "Give devices IPv6 addresses too.", s.ipv6);
-    const pq = V.toggleRow("Post-quantum protection", pqOK ? "Protects traffic against future quantum computers." : "Needs OpenSSL 3.5 or newer on the server.", pqOK && s.post_quantum, { disabled: !pqOK });
-    let limit = s.device_limit;
-    const out = h("output", { text: String(limit) });
-    const minus = h("button", { type: "button", "aria-label": "Fewer devices", text: "−" });
-    const plus = h("button", { type: "button", "aria-label": "More devices", text: "+" });
-    const syncLim = () => { out.textContent = String(limit); minus.disabled = limit <= 1; plus.disabled = limit >= 20; };
-    minus.addEventListener("click", () => { limit--; syncLim(); dirty(); });
-    plus.addEventListener("click", () => { limit++; syncLim(); dirty(); });
-    syncLim();
+    const err = B.errorSlot();
+    const name = B.input({ maxlength: "40", value: s.name });
+    const host = B.input({ value: s.host, autocapitalize: "off", spellcheck: "false", inputmode: "url", maxlength: "253", mono: true });
+    const email = B.input({ type: "email", value: s.acme_email, placeholder: "Optional", maxlength: "254" });
+    const appUrl = B.input({ type: "url", value: s.app_url, placeholder: "https://", maxlength: "512" });
+    const port = B.input({ type: "number", min: "1024", max: "65535", value: String(s.udp_port), inputmode: "numeric", mono: true });
+    const stealth = B.setting("Stealth mode", stealthText(), s.stealth, { icon: "eyeOff" });
+    const v6 = B.setting("IPv6", "Give devices IPv6 addresses too.", s.ipv6, { icon: "globe" });
+    const pq = B.setting("Post-quantum protection", pqOK ? "Protects traffic against future quantum computers." : "Needs OpenSSL 3.5 or newer on the server.", pqOK && s.post_quantum, { disabled: !pqOK, icon: "key" });
+    const limit = B.stepper(s.device_limit, 1, 20, "devices", () => dirty());
     const on = new Set(s.dns_default);
     const cats = {};
-    const catCard = h("div", { class: "card card-tight" });
+    const catList = h("div", { class: "setting-list" });
     r.data.categories.forEach((c) => {
-      cats[c] = V.toggleRow((CATS[c] || [c])[0], (CATS[c] || ["", ""])[1], on.has(c));
-      catCard.append(cats[c].row);
+      const m = CATS[c] || [c, "", "ban"];
+      cats[c] = B.setting(m[0], m[1], on.has(c), { icon: m[2] });
+      catList.append(cats[c].row);
     });
     let upstream = s.dns_upstream;
-    const seg = h("div", { class: "seg" });
-    const segBtns = UPSTREAMS.map(([v, t, d]) => h("button", { type: "button", role: "radio", "aria-checked": v === upstream ? "true" : "false", "data-v": v }, h("span", { class: "t", text: t }), h("span", { class: "d", text: d })));
-    segBtns.forEach((b) => seg.append(b));
-    V.radioGroup(seg, segBtns, (b) => { upstream = b.getAttribute("data-v"); dirty(); });
-    const updates = V.toggleRow("Automatic security updates", "Installs security fixes for the system by itself.", s.auto_updates);
-    const vpnOnly = V.toggleRow("Admin panel only through the VPN", "Hides this panel from the internet. Connect to the VPN first, or you'll lock yourself out.", s.admin_vpn_only);
+    const seg = B.segmented(UPSTREAMS, upstream, (v) => { upstream = v; dirty(); }, "Name lookups");
+    const updates = B.setting("Automatic security updates", windows() ? "Keeps Veyl's own components patched. Windows Update stays in charge of the system." : "Installs security fixes for the system by itself.", s.auto_updates, { icon: "refresh" });
+    const vpnOnly = B.setting("Admin panel only through the VPN", "Hides this panel from the internet. Connect to the VPN first, or you lock yourself out.", s.admin_vpn_only, { icon: "lock" });
     let reg = s.registration;
-    const regBtns = ["invite", "open", "closed"].map((k) => {
-      const b = V.choice({ icon: REG[k][2], title: REG[k][0], desc: REG[k][1], on: reg === k });
-      b.setAttribute("data-v", k);
-      return b;
-    });
-    const regGroup = h("div", { class: "stack" }, ...regBtns);
-    V.radioGroup(regGroup, regBtns, (b) => { reg = b.getAttribute("data-v"); dirty(); });
+    const regBtns = ["invite", "open", "closed"].map((k) => B.option({ icon: REG[k][2], title: REG[k][0], desc: REG[k][1], on: reg === k, value: k }));
+    const regGroup = h("div", { class: "options" }, ...regBtns);
+    B.radioGroup(regGroup, regBtns, (b) => { reg = b.getAttribute("data-value"); dirty(); }, "Who can join");
 
-    const saveBtn = h("button", { class: "btn btn-primary btn-small", type: "button" }, h("span", { text: "Save changes" }));
-    saveBtn.dataset.busy = "Saving…";
-    const bar = h("div", { class: "save-bar hidden" }, h("span", { class: "grow", text: "You have unsaved changes." }), saveBtn);
-    function dirty() { bar.classList.remove("hidden"); }
+    const saveBtn = B.button("Save changes", { size: "sm", busy: "Saving", onClick: () => save() });
+    const bar = h("div", { class: "save-bar is-hidden", role: "region", "aria-label": "Unsaved changes" }, h("span", { class: "grow", text: "You have unsaved changes." }), saveBtn);
+    function dirty() { bar.classList.remove("is-hidden"); }
     [name, host, email, appUrl, port].forEach((i) => i.addEventListener("input", dirty));
-    [stealth, v6, pq, updates, vpnOnly, ...Object.values(cats)].forEach((t) => t.sw.addEventListener("change", dirty));
+    [stealth, v6, pq, updates, vpnOnly, ...Object.values(cats)].forEach((t) => t.toggle.addEventListener("change", dirty));
 
-    saveBtn.addEventListener("click", () => V.busy(saveBtn, async () => {
+    async function save() {
       const hv = host.value.trim().toLowerCase();
       const isIP = /^[0-9.]+$/.test(hv) || hv.includes(":");
       const tls = isIP ? "internal" : (hv === s.host ? s.tls : "acme");
-      if (vpnOnly.sw.on() && !s.admin_vpn_only) {
-        if (!(await confirmDlg("Only allow the admin panel through the VPN?", "After saving, this page only opens while you're connected to this VPN. If you're not connected now, you'll be signed out.", "Yes, hide it"))) return;
+      if (vpnOnly.on() && !s.admin_vpn_only) {
+        if (!(await B.confirm("Only allow the admin panel through the VPN?", "After saving, this page only opens while you're connected to this VPN. If you're not connected now, you'll be signed out.", "Yes, hide it"))) return;
       }
       const body = {
         name: name.value.trim(), host: hv, tls, acme_email: email.value.trim(), udp_port: Number(port.value),
-        stealth: stealth.sw.on(), ipv6: v6.sw.on(), post_quantum: pq.sw.on(), registration: reg, device_limit: limit,
-        dns_default: Object.keys(cats).filter((c) => cats[c].sw.on()), dns_upstream: upstream,
-        admin_vpn_only: vpnOnly.sw.on(), auto_updates: updates.sw.on(), app_url: appUrl.value.trim()
+        stealth: stealth.on(), ipv6: v6.on(), post_quantum: pq.on(), registration: reg, device_limit: limit.value(),
+        dns_default: Object.keys(cats).filter((c) => cats[c].on()), dns_upstream: upstream,
+        admin_vpn_only: vpnOnly.on(), auto_updates: updates.on(), app_url: appUrl.value.trim()
       };
       const x = await api("PUT", "/v1/admin/settings", body);
-      if (!x.ok) { showErr(err, x.error); return; }
+      if (!x.ok) { B.showError(err, x.error); return; }
       clear(err);
       Object.assign(s, x.data.settings);
-      bar.classList.add("hidden");
-      V.toast("Saved");
-      if (x.data.applying) jobBanner(p, "apply");
-    }));
+      bar.classList.add("is-hidden");
+      B.toast("Saved");
+      if (x.data.applying) jobCard(p, "apply");
+    }
 
-    p.append(
-      h("p", { class: "card-title", text: "General" }),
-      h("div", { class: "card stack" }, field("Server name", name, "Shown in the admin panel and to apps that ask the server for its details."), field("Address", host, "Changing it gets a new certificate. Apps need the new address."), field("Certificate email", email), field("App download link", appUrl)),
-      h("p", { class: "card-title", text: "VPN" }),
-      h("div", { class: "card card-tight" }, stealth.row, v6.row, pq.row,
-        h("div", { class: "toggle-row" }, h("div", { class: "txt" }, h("div", { class: "t", text: "Devices per account" }), h("div", { class: "d", text: "Default for everyone." })), h("div", { class: "stepper" }, minus, out, plus))),
-      h("div", { class: "card" }, field("VPN port (UDP)", port, "Most people never need to change this.")),
-      h("p", { class: "card-title", text: "Block by default" }),
-      catCard,
-      h("p", { class: "card-title", text: "Name lookups" }),
-      seg,
-      h("p", { class: "card-title", text: "Who can join" }),
-      regGroup,
-      h("p", { class: "card-title", text: "Server" }),
-      h("div", { class: "card card-tight" }, updates.row, vpnOnly.row),
+    const card = (...kids) => h("div", { class: "card surface-card" }, ...kids);
+    const sect = (heading, text, ...kids) => h("section", { class: "section" }, h("div", null, h("h2", { class: "section-title", text: heading }), text ? h("p", { class: "section-text mt-1", text }) : null), ...kids);
+    p.body.append(
+      sect("General", null, card(h("div", { class: "stack" },
+        B.field("Server name", name, "Shown in the admin panel and to apps that ask the server for its details."),
+        B.field("Address", host, "Changing it gets a new certificate. Apps need the new address."),
+        h("div", { class: "grid-2" }, B.field("Certificate email", email), B.field("App download link", appUrl))
+      ))),
+      sect("VPN", null, card(h("div", { class: "setting-list" }, stealth.row, v6.row, pq.row, B.settingRow("Devices per account", "Default for everyone.", limit.el))), card(B.field("VPN port (UDP)", port, "Most people never need to change this."))),
+      sect("Block for everyone", "Blocked names never resolve, on every device that uses this VPN.", card(catList)),
+      sect("Name lookups", "Where your server asks when a site isn't blocked.", seg),
+      sect("Who can join", null, regGroup),
+      sect("Server", null, card(h("div", { class: "setting-list" }, updates.row, vpnOnly.row))),
       err,
       bar
     );
   }
 
   async function security() {
-    const p = pageShell("Security", "Protect the admin panel.");
-    const err = errSlot();
-    const cur = h("input", { class: "input", type: "password", autocomplete: "current-password" });
-    const np = V.passwordField({ id: "np", label: "New password", min: 12, hint: "At least 12 characters." });
-    const change = h("button", { class: "btn btn-ghost", type: "button" }, h("span", { text: "Change password" }));
-    change.addEventListener("click", () => V.busy(change, async () => {
-      if (!np.valid()) { showErr(err, "Use at least 12 characters."); return; }
+    const p = pageShell(["Security", "for this panel."], "Protect the admin panel with a strong password and a second step.");
+    const err = B.errorSlot();
+    const cur = B.input({ type: "password", autocomplete: "current-password" });
+    const np = B.passwordField({ id: "np", label: "New password", min: 12, hint: "At least 12 characters." });
+    const change = B.button("Change password", { variant: "secondary", onClick: async () => {
+      if (!np.valid()) { B.showError(err, "Use at least 12 characters."); return; }
       const r = await api("POST", "/v1/admin/password", { password: cur.value, new_password: np.input.value });
-      if (!r.ok) { showErr(err, r.error); return; }
+      if (!r.ok) { B.showError(err, r.error); return; }
       clear(err);
       cur.value = "";
       np.input.value = "";
-      V.toast("Password changed. Other sessions were signed out.");
-    }));
-    p.append(h("div", { class: "card stack" }, h("h3", { text: "Admin password" }), field("Current password", cur), np.field, err, h("div", null, change)));
-
-    const tf = h("div", { class: "card stack" });
-    p.append(tf);
+      B.toast("Password changed. Other sessions were signed out.");
+    } });
+    p.body.append(h("section", { class: "card surface-card" }, h("div", { class: "stack" }, h("h2", { class: "card-title", text: "Admin password" }), B.field("Current password", cur), np.field, err, h("div", null, change))));
+    const tf = h("section", { class: "card surface-card" });
+    p.body.append(tf);
     const s = await api("GET", "/v1/admin/session");
     if (!s.ok || page !== "security") return;
     sess = s.data;
@@ -625,94 +660,91 @@
   function drawTOTP(box) {
     clear(box);
     const on = sess.totp_enabled;
-    box.append(h("div", { class: "row" }, h("h3", { class: "grow", text: "Two-step sign in" }), h("span", { class: "badge " + (on ? "badge-green" : ""), text: on ? "On" : "Off" })));
-    box.append(h("p", { class: "hint", text: on ? "You need a code from your authenticator app to sign in." : "Ask for a 6-digit code from an app like 1Password, Aegis or Google Authenticator when signing in." }));
-    const err = errSlot();
+    const inner = h("div", { class: "stack" });
+    box.append(inner);
+    inner.append(
+      h("div", { class: "row" }, h("h2", { class: "card-title grow", text: "Two-step sign in" }), h("span", { class: "badge " + (on ? "badge-ok" : ""), text: on ? "On" : "Off" })),
+      h("p", { class: "text-muted", text: on ? "You need a code from your authenticator app to sign in." : "Ask for a 6-digit code from an app like 1Password, Aegis or Google Authenticator when signing in." })
+    );
+    const err = B.errorSlot();
     if (!on) {
-      const start = h("button", { class: "btn btn-primary", type: "button" }, icon("shieldCheck"), h("span", { text: "Turn on" }));
-      start.addEventListener("click", () => V.busy(start, async () => {
+      const start = B.button("Turn on", { icon: "shield", onClick: async () => {
         const r = await api("POST", "/v1/admin/totp/setup", {});
-        if (!r.ok) { showErr(err, r.error); return; }
-        const code = h("input", { class: "input mono", type: "text", inputmode: "numeric", autocomplete: "one-time-code", maxlength: "7", placeholder: "123 456" });
-        const en = h("button", { class: "btn btn-primary", type: "button" }, h("span", { text: "Confirm and turn on" }));
-        en.addEventListener("click", () => V.busy(en, async () => {
+        if (!r.ok) { B.showError(err, r.error); return; }
+        const code = B.input({ inputmode: "numeric", autocomplete: "one-time-code", maxlength: "7", placeholder: "123 456", mono: true });
+        const en = B.button("Confirm and turn on", { onClick: async () => {
           const x = await api("POST", "/v1/admin/totp/enable", { code: code.value.replace(/\s/g, "") });
-          if (!x.ok) { showErr(err, x.error); return; }
+          if (!x.ok) { B.showError(err, x.error); return; }
           sess.totp_enabled = true;
-          V.toast("Two-step sign in is on");
+          B.toast("Two-step sign in is on");
           drawTOTP(box);
-        }));
-        clear(box).append(
-          h("h3", { text: "Scan with your authenticator app" }),
+        } });
+        clear(inner).append(
+          h("h2", { class: "card-title", text: "Scan with your authenticator app" }),
           h("img", { class: "qr", src: r.data.qr, alt: "QR code for your authenticator app", width: "220", height: "220" }),
-          h("p", { class: "hint center", text: "Can't scan? Enter this key instead:" }),
-          h("div", { class: "code-box" }, h("div", { class: "val small wrap", text: r.data.secret.replace(/(.{4})/g, "$1 ").trim() }), h("button", { class: "btn btn-ghost btn-small", type: "button", onclick: () => V.copy(r.data.secret) }, icon("copy"), "Copy")),
-          field("Enter the 6-digit code it shows", code),
+          h("p", { class: "field-hint center", text: "Can't scan? Enter this key instead." }),
+          B.secret(r.data.secret, r.data.secret.replace(/(.{4})/g, "$1 ").trim(), { small: true, aria: "Copy key", toast: "Key copied" }),
+          B.field("Enter the 6-digit code it shows", code),
           err,
-          h("div", { class: "row-wrap" }, en, h("button", { class: "btn btn-quiet", type: "button", onclick: () => drawTOTP(box), text: "Cancel" }))
+          h("div", { class: "cluster" }, en, B.button("Cancel", { variant: "ghost", async: false, onClick: () => drawTOTP(box) }))
         );
         code.focus();
-      }));
-      box.append(err, h("div", null, start));
+      } });
+      inner.append(err, h("div", null, start));
     } else {
-      const off = h("button", { class: "btn btn-danger", type: "button" }, h("span", { text: "Turn off" }));
-      off.addEventListener("click", () => {
-        const pw = h("input", { class: "input", type: "password", autocomplete: "current-password" });
-        const e2 = errSlot();
-        const ok = h("button", { class: "btn btn-danger", type: "button", text: "Turn off" });
-        const cancel = h("button", { class: "btn btn-ghost", type: "button", text: "Cancel" });
-        const d = dialog("Turn off two-step sign in?", [field("Admin password", pw), e2], [cancel, ok]);
-        cancel.addEventListener("click", () => d.close());
-        ok.addEventListener("click", () => V.busy(ok, async () => {
+      const off = B.button("Turn off", { variant: "danger", async: false, onClick: () => {
+        const pw = B.input({ type: "password", autocomplete: "current-password" });
+        const e2 = B.errorSlot();
+        const cancel = B.button("Cancel", { variant: "secondary", async: false, onClick: () => d.close() });
+        const ok = B.button("Turn off", { variant: "danger", onClick: async () => {
           const x = await api("POST", "/v1/admin/totp/disable", { password: pw.value });
-          if (!x.ok) { showErr(e2, x.error); return; }
+          if (!x.ok) { B.showError(e2, x.error); return; }
           d.close();
           sess.totp_enabled = false;
-          V.toast("Two-step sign in is off");
+          B.toast("Two-step sign in is off");
           drawTOTP(box);
-        }));
+        } });
+        const d = B.dialog("Turn off two-step sign in?", [B.field("Admin password", pw), e2], [cancel, ok]);
         pw.focus();
-      });
-      box.append(err, h("div", null, off));
+      } });
+      inner.append(err, h("div", null, off));
     }
   }
 
-  function backup() {
-    const p = pageShell("Backup", "Keep a copy somewhere safe, like a password manager or USB stick.");
-    const pass = V.passwordField({ id: "bk", label: "Passphrase", min: 10, hint: "At least 10 characters. You need it to restore." });
-    const err = errSlot();
-    const dl = h("button", { class: "btn btn-primary", type: "button" }, icon("download"), h("span", { text: "Download backup" }));
-    dl.dataset.busy = "Encrypting…";
-    dl.addEventListener("click", () => V.busy(dl, async () => {
-      if (!pass.valid()) { pass.input.classList.add("invalid"); showErr(err, "Use at least 10 characters."); return; }
+  async function backup() {
+    const p = pageShell(["Backup", "and restore."], "Keep a copy somewhere safe, like a password manager or a USB stick.");
+    await ensurePlatform();
+    if (page !== "backup") return;
+    const pass = B.passwordField({ id: "bk", label: "Passphrase", min: 10, hint: "At least 10 characters. You need it to restore." });
+    const err = B.errorSlot();
+    const dl = B.button("Download backup", { icon: "download", busy: "Encrypting", onClick: async () => {
+      if (!pass.valid()) { pass.input.classList.add("is-invalid"); B.showError(err, "Use at least 10 characters."); return; }
       const r = await api("POST", "/v1/admin/backup", { passphrase: pass.input.value }, { blob: true });
-      if (!r.ok) { showErr(err, r.error); return; }
+      if (!r.ok) { B.showError(err, r.error); return; }
       clear(err);
-      V.save(r.blob, r.filename);
-      V.toast("Backup downloaded");
-    }));
-    p.append(
-      h("div", { class: "card stack" },
-        h("h3", { text: "Download an encrypted backup" }),
-        h("p", { class: "hint", text: "Includes settings, accounts, devices, certificates and the admin sign in. It's locked with your passphrase using AES-256." }),
+      B.save(r.blob, r.filename);
+      B.toast("Backup downloaded");
+    } });
+    p.body.append(
+      h("section", { class: "card surface-card card-glow" }, h("div", { class: "stack" },
+        h("div", null, h("h2", { class: "card-title", text: "Download an encrypted backup" }), h("p", { class: "card-text", text: "Includes settings, accounts, devices, certificates and the admin sign in. It's locked with your passphrase using AES-256." })),
         pass.field, err, h("div", null, dl)
-      ),
-      h("div", { class: "card stack" },
-        h("h3", { text: "Restoring" }),
-        h("p", { class: "hint", text: "On a new server, run the installer and choose \"Restore from a backup\" in setup. Everyone keeps their account numbers." }),
-        h("div", { class: "code-box" }, h("div", { class: "val small", text: "sudo veyl restore veyl-backup.vbk" }), h("button", { class: "btn btn-ghost btn-small", type: "button", onclick: () => V.copy("sudo veyl restore veyl-backup.vbk") }, icon("copy"), "Copy"))
-      )
+      )),
+      h("section", { class: "card surface-quiet" }, h("div", { class: "stack" },
+        h("div", null, h("h2", { class: "card-title", text: "Restoring" }), h("p", { class: "card-text", text: "On a new server, run the installer and choose \"Restore from a backup\" in setup. Everyone keeps their account numbers. Or restore from the command line:" })),
+        command("veyl restore veyl-backup.vbk")
+      ))
     );
   }
 
   async function boot() {
-    const s = await V.api("GET", "/v1/admin/session");
+    const s = await B.api("GET", "/v1/admin/session");
     if (!s.ok) {
-      clear(app).append(h("div", { class: "centered" }, h("div", { class: "login" }, V.callout("err", "Can't open the admin panel", s.error))));
+      clear(app).append(h("div", { class: "auth-box" }, B.callout("danger", "Can't open the admin panel", s.error)));
       return;
     }
     sess = s.data;
-    V.state.csrf = sess.csrf || "";
+    B.state.csrf = sess.csrf || "";
     if (sess.authenticated) shell();
     else login();
   }

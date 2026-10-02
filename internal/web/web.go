@@ -129,7 +129,11 @@ type Pages struct {
 }
 
 func NewPages(prefix, page string) *Pages {
-	p := &Pages{prefix: prefix, page: page, files: Assets(), etags: map[string]string{}}
+	return NewPagesFS(prefix, page, Assets())
+}
+
+func NewPagesFS(prefix, page string, files fs.FS) *Pages {
+	p := &Pages{prefix: prefix, page: page, files: files, etags: map[string]string{}}
 	_ = fs.WalkDir(p.files, ".", func(name string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
@@ -146,12 +150,13 @@ func NewPages(prefix, page string) *Pages {
 }
 
 var types = map[string]string{
-	".html": "text/html; charset=utf-8",
-	".css":  "text/css; charset=utf-8",
-	".js":   "text/javascript; charset=utf-8",
-	".svg":  "image/svg+xml",
-	".png":  "image/png",
-	".json": "application/json",
+	".html":  "text/html; charset=utf-8",
+	".css":   "text/css; charset=utf-8",
+	".js":    "text/javascript; charset=utf-8",
+	".svg":   "image/svg+xml",
+	".png":   "image/png",
+	".json":  "application/json",
+	".woff2": "font/woff2",
 }
 
 func (p *Pages) ServeHTTP(w http.ResponseWriter, r *http.Request) {

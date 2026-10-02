@@ -14,6 +14,7 @@ import (
 	"github.com/veylvpn/backend/internal/agentapi"
 	"github.com/veylvpn/backend/internal/config"
 	"github.com/veylvpn/backend/internal/render"
+	"github.com/veylvpn/backend/internal/web"
 )
 
 type fakeRunner struct {
@@ -230,6 +231,9 @@ func newHarness(t *testing.T, s config.Settings) *harness {
 				return nil, err
 			}
 			return map[string]int{"ads": 1000, "malware": 200}, nil
+		},
+		Font: func(context.Context, *http.Client) ([]byte, error) {
+			return []byte("font"), nil
 		},
 		Lookup:        func(string) (int, int, error) { return 990, 990, nil },
 		Chown:         func(string, int, int) error { return nil },
@@ -712,5 +716,40 @@ func TestDisplayAliases(t *testing.T) {
 		if d[k] != v {
 			t.Errorf("%s = %q, want %q", k, d[k], v)
 		}
+	}
+}
+
+func TestFontsStep(t *testing.T) {
+	h := newHarness(t, testSettings())
+	calls := 0
+	h.a.Font = func(context.Context, *http.Client) ([]byte, error) {
+		calls++
+		return []byte("font-bytes"), nil
+	}
+	if _, err := h.do(agentapi.OpApply); err != nil {
+		t.Fatal(err)
+	}
+	if h.status("fonts") != agentapi.StatusOK || readFile(t, h.root, web.FontPath(config.DataDir)) != "font-bytes" || calls != 1 {
+		t.Fatal(h.status("fonts"), calls)
+	}
+	fi, err := os.Stat(filepath.Join(h.root, web.FontPath(config.DataDir)))
+	if err != nil || fi.Mode().Perm() != 0o644 {
+		t.Fatal(fi, err)
+	}
+	h2 := newHarness(t, testSettings())
+	h2.a.Font = func(context.Context, *http.Client) ([]byte, error) { return nil, web.ErrFontChecksum }
+	if _, err := h2.do(agentapi.OpApply); err != nil {
+		t.Fatal("font failure must not fail apply", err)
+	}
+	if h2.status("fonts") != agentapi.StatusSkip {
+		t.Fatal(h2.status("fonts"))
+	}
+	h3 := newHarness(t, config.Defaults())
+	h3.a.Font = func(context.Context, *http.Client) ([]byte, error) { return []byte("f"), nil }
+	if err := h3.a.Bootstrap(context.Background(), h3.emit, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if h3.status("fonts") != agentapi.StatusOK {
+		t.Fatal(h3.status("fonts"))
 	}
 }

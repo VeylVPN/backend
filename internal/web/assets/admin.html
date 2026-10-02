@@ -4,17 +4,36 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="referrer" content="no-referrer">
-<meta name="theme-color" content="#0b0b0c">
+<meta name="theme-color" content="#05050a">
+<meta name="color-scheme" content="dark">
 <meta name="robots" content="noindex, nofollow">
-<title>Veyl Admin</title>
+<title>Veyl admin</title>
 <link rel="icon" href="/admin/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/admin/app.css">
-<script src="/admin/ui.js" defer></script>
+<link rel="stylesheet" href="/admin/brand.css">
+<script src="/admin/brand.js" defer></script>
 <script src="/admin/admin.js" defer></script>
 </head>
 <body>
-<div id="app">
-<noscript><p>The admin panel needs JavaScript. Please turn it on and reload.</p></noscript>
+<a class="skip-link" href="#main">Skip to content</a>
+<div class="app">
+<div class="page-glow page-glow-left" aria-hidden="true"></div>
+<header class="nav" id="nav">
+<div class="container nav-inner">
+<a class="nav-home brand-logo" href="/admin" aria-label="Veyl admin home"><span class="brand-logo-tile"><img src="/admin/mark.svg" alt="" width="18" height="11"></span><span class="brand-logo-name">Veyl<span>VPN</span></span></a>
+<div class="nav-actions" id="nav-actions"></div>
+</div>
+</header>
+<main class="app-main" id="main">
+<div class="container" id="app">
+<noscript><p class="text-lede">The admin panel needs JavaScript. Turn it on and reload.</p></noscript>
+</div>
+</main>
+<footer class="app-footer">
+<div class="container app-footer-inner">
+<p id="footer-version">Veyl admin</p>
+<p>No traffic logs. No analytics. No tracking.</p>
+</div>
+</footer>
 </div>
 </body>
 </html>

@@ -755,7 +755,7 @@ func TestVPNOnly(t *testing.T) {
 
 func TestPanelServedWithCSP(t *testing.T) {
 	e := setup(t)
-	for path, ct := range map[string]string{"/admin": "text/html", "/admin/admin.js": "text/javascript", "/admin/app.css": "text/css", "/admin/favicon.svg": "image/svg+xml"} {
+	for path, ct := range map[string]string{"/admin": "text/html", "/admin/admin.js": "text/javascript", "/admin/brand.css": "text/css", "/admin/brand.js": "text/javascript", "/admin/favicon.svg": "image/svg+xml"} {
 		res, _ := e.do("GET", path, nil, nil)
 		if res.StatusCode != 200 || !strings.HasPrefix(res.Header.Get("Content-Type"), ct) {
 			t.Fatal(path, res.StatusCode, res.Header.Get("Content-Type"))

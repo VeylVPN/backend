@@ -25,6 +25,7 @@ type Agent struct {
 	Probe         Probe
 	HTTP          *http.Client
 	Download      func(ctx context.Context, dir string, client *http.Client) (map[string]int, error)
+	Font          func(ctx context.Context, client *http.Client) ([]byte, error)
 	Lookup        func(name string) (uid, gid int, err error)
 	Chown         func(path string, uid, gid int) error
 	AllowUID      func(uid uint32) bool
