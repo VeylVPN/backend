@@ -17,6 +17,10 @@ const (
 	Listen      = "127.0.0.1:8090"
 	SetupPrefix = "/control"
 
+	OpSite  = "site"
+	OpCert  = "cert"
+	OpRenew = "renew"
+
 	ModeHTTP  = "http"
 	ModeDNS   = "dns"
 	ModeCaddy = "caddy"

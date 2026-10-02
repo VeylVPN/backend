@@ -18,6 +18,7 @@ import (
 
 const (
 	PairPath        = "/v1/admin/pair"
+	SelfKeyPath     = "/v1/admin/panel/key"
 	bearerThrottle  = "admin-bearer"
 	pairThrottle    = "admin-pair"
 	maxBearerHeader = 256
@@ -35,6 +36,7 @@ func (a *Admin) panelRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/admin/services/restart", a.auth(a.restartServices))
 	mux.HandleFunc("POST /v1/admin/update", a.auth(a.update))
 	mux.HandleFunc("GET /v1/admin/job", a.auth(a.jobState))
+	mux.HandleFunc("DELETE "+SelfKeyPath, a.keyAuth(a.revokeSelf))
 }
 
 func bearer(r *http.Request) string {
@@ -85,7 +87,7 @@ func (a *Admin) keyAuth(fn http.HandlerFunc) http.HandlerFunc {
 			web.Error(w, http.StatusUnauthorized, "INVALID_KEY", "That node key is not valid.")
 			return
 		}
-		if k.Scope != panelkey.ScopeManage && r.Method != http.MethodGet && r.Method != http.MethodHead {
+		if k.Scope != panelkey.ScopeManage && r.Method != http.MethodGet && r.Method != http.MethodHead && r.URL.Path != SelfKeyPath {
 			web.Error(w, http.StatusForbidden, "FORBIDDEN", "This node key can only read.")
 			return
 		}
@@ -213,6 +215,19 @@ func (a *Admin) revokeKey(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		web.Error(w, http.StatusInternalServerError, "INTERNAL", "Could not remove the key.")
+		return
+	}
+	web.JSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+func (a *Admin) revokeSelf(w http.ResponseWriter, r *http.Request) {
+	id, _ := r.Context().Value(keyCtx{}).(string)
+	ks, err := a.keyStore()
+	if err == nil {
+		err = ks.Revoke(id)
+	}
+	if err != nil {
+		web.Error(w, http.StatusNotFound, "KEY_NOT_FOUND", "That key no longer exists.")
 		return
 	}
 	web.JSON(w, http.StatusOK, map[string]bool{"ok": true})

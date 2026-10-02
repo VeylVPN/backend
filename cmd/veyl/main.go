@@ -26,6 +26,7 @@ const usage = `usage: veyl <command>
   update [-branch B]          update to the latest version
   uninstall [-purge]          remove Veyl from this server
   version
+  panel <command>             Veyl Control, the optional fleet panel (veyl panel help)
 
   serve | agent | dns | hook | init [dir]   used by the system services
 `
@@ -67,6 +68,8 @@ func run(args []string) int {
 		return adminMain(rest)
 	case "setup-link":
 		return setupLinkMain(rest)
+	case "panel":
+		return panelMain(rest)
 	case "backup":
 		return backupMain(rest)
 	case "restore":

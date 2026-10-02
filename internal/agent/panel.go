@@ -22,9 +22,9 @@ import (
 )
 
 const (
-	PanelOpSite    = "site"
-	PanelOpCert    = "cert"
-	PanelOpRenew   = "renew"
+	PanelOpSite    = panelcfg.OpSite
+	PanelOpCert    = panelcfg.OpCert
+	PanelOpRenew   = panelcfg.OpRenew
 	certbotTimeout = 50 * time.Minute
 )
 
