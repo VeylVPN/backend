@@ -1,0 +1,16 @@
+[Unit]
+Description=Veyl root agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/veyl agent
+Restart=always
+RestartSec=2
+UMask=0022
+PrivateTmp=yes
+ProtectHome=yes
+
+[Install]
+WantedBy=multi-user.target

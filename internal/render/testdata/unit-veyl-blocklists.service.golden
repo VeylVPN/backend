@@ -1,0 +1,29 @@
+[Unit]
+Description=Veyl blocklist update
+After=network-online.target veyl-agent.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=veyl
+Group=veyl
+ExecStart=/usr/local/bin/veyl agent run dns-update
+CapabilityBoundingSet=
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK

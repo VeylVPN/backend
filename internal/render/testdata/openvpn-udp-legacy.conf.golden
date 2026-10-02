@@ -1,0 +1,34 @@
+dev veyl-udp
+dev-type tun
+topology subnet
+server 10.8.0.0 255.255.255.0
+proto udp
+port 51820
+explicit-exit-notify 1
+ca /var/lib/veyl/ca.crt
+cert /var/lib/veyl/server.crt
+key /var/lib/veyl/server.key
+dh none
+tls-crypt-v2 /var/lib/veyl/tls-crypt-v2-server.key
+tls-crypt-v2-verify "/usr/local/bin/veyl hook verify"
+client-connect "/usr/local/bin/veyl hook connect"
+script-security 2
+crl-verify /var/lib/veyl/crl.pem
+remote-cert-tls client
+verify-client-cert require
+tls-server
+tls-cert-profile preferred
+tls-version-min 1.2
+data-ciphers AES-256-GCM:CHACHA20-POLY1305:AES-128-GCM
+allow-compression no
+push "redirect-gateway def1 bypass-dhcp"
+push "block-outside-dns"
+keepalive 10 60
+max-clients 250
+user veyl-ovpn
+group veyl
+persist-key
+persist-tun
+verb 0
+mute-replay-warnings
+management /run/veyl/mgmt-udp unix

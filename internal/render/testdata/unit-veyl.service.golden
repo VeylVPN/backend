@@ -1,0 +1,36 @@
+[Unit]
+Description=Veyl server
+After=network-online.target veyl-agent.service
+Wants=network-online.target veyl-agent.service
+
+[Service]
+Type=simple
+User=veyl
+Group=veyl
+ExecStart=/usr/local/bin/veyl serve
+Restart=always
+RestartSec=2
+UMask=0007
+CapabilityBoundingSet=
+ReadWritePaths=/var/lib/veyl /run/veyl
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+
+[Install]
+WantedBy=multi-user.target

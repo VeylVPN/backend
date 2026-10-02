@@ -4,4 +4,3 @@ ForwardToSyslog=no
 ForwardToKMsg=no
 ForwardToConsole=no
 ForwardToWall=no
-MaxLevelStore=emerg
