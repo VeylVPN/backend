@@ -25,6 +25,7 @@ import (
 	"github.com/veylvpn/backend/internal/pki"
 	"github.com/veylvpn/backend/internal/setup"
 	"github.com/veylvpn/backend/internal/store"
+	"github.com/veylvpn/backend/internal/web"
 )
 
 type demoAgent struct {
@@ -63,6 +64,9 @@ func (a demoAgent) Do(ctx context.Context, req agentapi.Request, fn func(agentap
 			"svc.veyl": "active", "svc.veyl-dns": "active", "svc.openvpn-server@veyl-udp": "active", "svc.openvpn-server@veyl-tcp": "active",
 			"svc.unbound": "active", "svc.caddy": "active", "svc.nftables": "active",
 		}})
+		if p := os.Getenv("VEYL_UI_DEMO_PLATFORM"); p != "" {
+			fn(agentapi.Event{Data: map[string]string{"platform": p, "stealth_port": "993"}})
+		}
 		return done(true, "")
 	case agentapi.OpTLS:
 		for _, s := range []string{"caddy", "certificate", "health"} {
@@ -267,7 +271,14 @@ func TestUIDemo(t *testing.T) {
 	wz := setup.New(d)
 	wz.Resolvers = []string{fakeDNS(t)}
 	ad := admin.New(d)
+	if f := os.Getenv("VEYL_UI_DEMO_FONT"); f != "" {
+		if b, err := os.ReadFile(f); err == nil {
+			_ = os.MkdirAll(web.FontDir(dir), 0o755)
+			_ = os.WriteFile(web.FontPath(dir), b, 0o644)
+		}
+	}
 	mux := http.NewServeMux()
+	mux.Handle(web.FontRoute, web.Fonts(dir))
 	sh, ah := wz.Handler(), ad.Handler()
 	for _, pat := range []string{"/setup", "/setup/", "/v1/setup/"} {
 		mux.Handle(pat, sh)

@@ -39,6 +39,8 @@ Lost the link? `sudo veyl setup-link`. Re-running the installer repairs and upda
 
 **Admin panel** with live connected count, accounts, devices, invites, settings, service health, blocklist status, two-factor authentication and encrypted backups.
 
+**Same look as the website.** The setup page and admin panel share one design system (`internal/web/assets/brand.css` and `brand.js`). The Satoshi font can't be redistributed in this repository, so the installer and the agent download it from Fontshare when it is missing, check its pinned SHA-256 and serve it from `/var/lib/veyl/fonts`. If the download fails, the pages use the system font. Browsers never contact a third party.
+
 **API** for apps and scripts: Mullvad-style access tokens, device management and DNS preferences. See [docs/API.md](docs/API.md) and [docs/openapi.yaml](docs/openapi.yaml).
 
 ## No logs
