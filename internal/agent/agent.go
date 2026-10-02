@@ -9,6 +9,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -32,6 +33,9 @@ type Agent struct {
 	Sleep         func(ctx context.Context, d time.Duration) error
 	HealthTimeout time.Duration
 	VerifyTimeout time.Duration
+	Windows       bool
+	Async         func(func())
+	MgmtState     func(instance string) (string, error)
 
 	once sync.Once
 	lock chan struct{}
@@ -39,10 +43,11 @@ type Agent struct {
 
 func New() *Agent {
 	return &Agent{
-		Paths:  config.DefaultPaths(),
-		Runner: ExecRunner{},
-		Probe:  NetProbe{},
-		HTTP:   &http.Client{Timeout: 90 * time.Second},
+		Paths:   config.DefaultPaths(),
+		Runner:  ExecRunner{},
+		Probe:   NetProbe{},
+		HTTP:    &http.Client{Timeout: 90 * time.Second},
+		Windows: config.Platform == config.PlatformWindows,
 	}
 }
 
@@ -66,6 +71,9 @@ func (a *Agent) init() {
 		}
 		if a.Chown == nil {
 			a.Chown = os.Lchown
+			if a.Windows {
+				a.Chown = func(string, int, int) error { return nil }
+			}
 		}
 		if a.Sleep == nil {
 			a.Sleep = sleepCtx
@@ -75,6 +83,9 @@ func (a *Agent) init() {
 		}
 		if a.VerifyTimeout == 0 {
 			a.VerifyTimeout = 30 * time.Second
+		}
+		if a.Async == nil {
+			a.Async = func(fn func()) { go fn() }
 		}
 	})
 }
@@ -116,6 +127,9 @@ func sleepCtx(ctx context.Context, d time.Duration) error {
 func (a *Agent) path(p string) string {
 	if a.Root == "" {
 		return p
+	}
+	if len(p) >= 3 && p[1] == ':' && p[2] == '\\' {
+		p = strings.ReplaceAll(p[2:], `\`, "/")
 	}
 	return filepath.Join(a.Root, p)
 }
@@ -162,6 +176,9 @@ func (a *Agent) Do(ctx context.Context, op string, emit Emit) (map[string]string
 	a.init()
 	if emit == nil {
 		emit = func(agentapi.Event) {}
+	}
+	if a.Windows {
+		return a.doWindows(ctx, op, emit)
 	}
 	switch op {
 	case agentapi.OpPing:

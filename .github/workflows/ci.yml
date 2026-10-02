@@ -1,0 +1,88 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: gofmt
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            printf '%s\n' "$unformatted"
+            exit 1
+          fi
+      - name: no comments
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          if grep -rnE '^[[:space:]]*//' --include='*.go' . | grep -vE ':[[:space:]]*//go:(build|embed)'; then
+            exit 1
+          fi
+          if grep -nE '^[[:space:]]*#' install.sh | grep -v '^1:#!'; then
+            exit 1
+          fi
+          if grep -nE '^[[:space:]]*(#|<#)' install.ps1; then
+            exit 1
+          fi
+      - name: vet
+        run: go vet ./...
+      - name: vet and build for the other platforms
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          GOOS=windows GOARCH=amd64 go vet ./...
+          GOOS=windows GOARCH=amd64 go build ./...
+          GOOS=linux GOARCH=arm64 go build ./...
+      - name: test
+        run: go test ./...
+      - name: shellcheck
+        if: runner.os == 'Linux'
+        run: shellcheck install.sh
+      - name: parse install.ps1 with PowerShell 7
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path ./install.ps1).Path, [ref]$tokens, [ref]$errors)
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Host $_.ToString() }
+            exit 1
+          }
+      - name: parse install.ps1 with Windows PowerShell 5.1
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $tokens = $null
+          $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path ./install.ps1).Path, [ref]$tokens, [ref]$errors)
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Host $_.ToString() }
+            exit 1
+          }
+      - name: install.ps1 rejects bad input without changing anything
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $out = & powershell -NoProfile -ExecutionPolicy Bypass -File ./install.ps1 -Domain 'bad domain;calc' 2>&1 | Out-String
+          if ($LASTEXITCODE -ne 1 -or $out -notmatch 'invalid domain') {
+            Write-Host $out
+            exit 1
+          }

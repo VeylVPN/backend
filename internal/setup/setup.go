@@ -393,6 +393,8 @@ func (w *Wizard) state(rw http.ResponseWriter, r *http.Request) {
 		"csrf":            csrf,
 		"categories":      config.Categories,
 		"version":         app.Version,
+		"platform":        config.Platform,
+		"stealth_port":    set.StealthTCPPort(),
 	})
 }
 
@@ -593,6 +595,7 @@ func needSecure(rw http.ResponseWriter, r *http.Request) bool {
 type settingsIn struct {
 	Name         *string   `json:"name"`
 	Stealth      *bool     `json:"stealth"`
+	StealthPort  *int      `json:"stealth_port"`
 	IPv6         *bool     `json:"ipv6"`
 	PostQuantum  *bool     `json:"post_quantum"`
 	DeviceLimit  *int      `json:"device_limit"`
@@ -620,6 +623,12 @@ func (w *Wizard) settings(rw http.ResponseWriter, r *http.Request) {
 		}
 		if in.Stealth != nil {
 			s.Stealth = *in.Stealth
+		}
+		if in.StealthPort != nil {
+			s.StealthPort = *in.StealthPort
+			if s.StealthPort == config.DefaultStealthPort(config.Platform) {
+				s.StealthPort = 0
+			}
 		}
 		if in.IPv6 != nil {
 			s.IPv6 = *in.IPv6
@@ -677,6 +686,8 @@ func message(err error) string {
 		return "The app link must start with https://."
 	case errors.Is(err, config.ErrHost):
 		return "Choose an address first."
+	case errors.Is(err, config.ErrStealthPort):
+		return "Pick a different stealth port. On Windows any free TCP port works except 53, 80, 443, 5335, 7505, 7506, 8080, 8081 and 8443."
 	}
 	return "Those settings could not be saved."
 }

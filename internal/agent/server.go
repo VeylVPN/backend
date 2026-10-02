@@ -11,7 +11,6 @@ import (
 	"net"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"sort"
 	"strings"
 	"syscall"
@@ -19,68 +18,14 @@ import (
 
 	"github.com/veylvpn/backend/internal/agentapi"
 	"github.com/veylvpn/backend/internal/config"
+	"github.com/veylvpn/backend/internal/privdrop"
+	"github.com/veylvpn/backend/internal/winsvc"
 )
 
 const (
 	maxRequest = 4096
 	opTimeout  = 30 * time.Minute
 )
-
-func diskUsage(path string) (uint64, uint64, error) {
-	var st syscall.Statfs_t
-	if err := syscall.Statfs(path, &st); err != nil {
-		return 0, 0, err
-	}
-	return st.Blocks * uint64(st.Bsize), st.Bavail * uint64(st.Bsize), nil
-}
-
-func peerUID(c *net.UnixConn) (uint32, error) {
-	raw, err := c.SyscallConn()
-	if err != nil {
-		return 0, err
-	}
-	var cred *syscall.Ucred
-	var serr error
-	if err := raw.Control(func(fd uintptr) {
-		cred, serr = syscall.GetsockoptUcred(int(fd), syscall.SOL_SOCKET, syscall.SO_PEERCRED)
-	}); err != nil {
-		return 0, err
-	}
-	if serr != nil {
-		return 0, serr
-	}
-	return cred.Uid, nil
-}
-
-func (a *Agent) Listen(sock string) (*net.UnixListener, error) {
-	a.init()
-	if err := os.MkdirAll(filepath.Dir(sock), 0o770); err != nil {
-		return nil, err
-	}
-	if fi, err := os.Lstat(sock); err == nil {
-		if fi.Mode()&os.ModeSocket == 0 {
-			return nil, fmt.Errorf("%s exists and is not a socket", sock)
-		}
-		if err := os.Remove(sock); err != nil {
-			return nil, err
-		}
-	}
-	old := syscall.Umask(0o177)
-	ln, err := net.ListenUnix("unix", &net.UnixAddr{Name: sock, Net: "unix"})
-	syscall.Umask(old)
-	if err != nil {
-		return nil, err
-	}
-	ln.SetUnlinkOnClose(true)
-	if _, gid, err := a.Lookup(config.ServiceUser); err == nil {
-		_ = a.Chown(sock, 0, gid)
-	}
-	if err := os.Chmod(sock, 0o660); err != nil {
-		ln.Close()
-		return nil, err
-	}
-	return ln, nil
-}
 
 func (a *Agent) Serve(ctx context.Context, ln *net.UnixListener) error {
 	a.init()
@@ -111,14 +56,13 @@ func (a *Agent) handle(ctx context.Context, c *net.UnixConn) {
 		_ = c.SetWriteDeadline(time.Now().Add(10 * time.Second))
 		_ = enc.Encode(ev)
 	}
-	uid, err := peerUID(c)
+	ok := a.peerAllowed(c)
 	_ = c.SetReadDeadline(time.Now().Add(10 * time.Second))
-	line, rerr := bufio.NewReaderSize(io.LimitReader(c, maxRequest), maxRequest).ReadSlice('\n')
-	if err != nil || !a.allowed(uid) {
+	line, err := bufio.NewReaderSize(io.LimitReader(c, maxRequest), maxRequest).ReadSlice('\n')
+	if !ok {
 		send(agentapi.Event{Done: true, Error: "forbidden"})
 		return
 	}
-	err = rerr
 	if err != nil {
 		send(agentapi.Event{Done: true, Error: "bad request"})
 		return
@@ -162,8 +106,8 @@ func Main(args []string) int {
 }
 
 func needRoot() bool {
-	if os.Geteuid() != 0 {
-		fmt.Fprintln(os.Stderr, "this command must run as root")
+	if !privdrop.Elevated() {
+		fmt.Fprintln(os.Stderr, "this command must run as root or Administrator")
 		return false
 	}
 	return true
@@ -184,8 +128,11 @@ func serveMain(args []string) int {
 		fmt.Fprintln(os.Stderr, "agent:", err)
 		return 1
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	ctx, stop := signal.NotifyContext(winsvc.Context(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	if a.Windows {
+		go a.DailyBlocklists(ctx)
+	}
 	if err := a.Serve(ctx, ln); err != nil {
 		fmt.Fprintln(os.Stderr, "agent:", err)
 		return 1
@@ -264,7 +211,7 @@ func uninstallMain(args []string) int {
 	}
 	a := New()
 	err := a.Uninstall(context.Background(), printer(os.Stdout), *purge)
-	for _, p := range []string{config.BinPath, "/opt/veyl"} {
+	for _, p := range leftovers() {
 		_ = os.RemoveAll(a.path(p))
 	}
 	if err != nil {
@@ -280,7 +227,6 @@ const (
 )
 
 func UpdateArgs(branch string) ([]string, error) {
-	argv := []string{"/bin/bash", InstallPath, "--yes"}
 	if branch != "" {
 		for _, r := range branch {
 			if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '.' || r == '_' || r == '-' || r == '/') {
@@ -290,9 +236,27 @@ func UpdateArgs(branch string) ([]string, error) {
 		if len(branch) > 100 || strings.HasPrefix(branch, "-") {
 			return nil, errors.New("invalid branch name")
 		}
+	}
+	if config.Platform == config.PlatformWindows {
+		argv := append([]string{config.WinPowerShell}, PowerShellFlags...)
+		argv = append(argv, "-File", config.WinInstaller, "-Yes")
+		if branch != "" {
+			argv = append(argv, "-Branch", branch)
+		}
+		return argv, nil
+	}
+	argv := []string{"/bin/bash", InstallPath, "--yes"}
+	if branch != "" {
 		argv = append(argv, "--branch", branch)
 	}
 	return argv, nil
+}
+
+func installerPath() string {
+	if config.Platform == config.PlatformWindows {
+		return config.WinInstaller
+	}
+	return InstallPath
 }
 
 func updateMain(args []string) int {
@@ -309,12 +273,11 @@ func updateMain(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 2
 	}
-	if _, err := os.Stat(InstallPath); err != nil {
-		fmt.Fprintln(os.Stderr, "installer not found at", InstallPath)
+	if _, err := os.Stat(installerPath()); err != nil {
+		fmt.Fprintln(os.Stderr, "installer not found at", installerPath())
 		return 1
 	}
-	env := []string{"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL=C.UTF-8", "HOME=/root"}
-	if err := syscall.Exec(argv[0], argv, env); err != nil {
+	if err := execInstaller(argv); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}

@@ -35,6 +35,10 @@ var privateRanges = []string{
 }
 
 func Unbound(s config.Settings, f Facts) (string, error) {
+	return unbound(s, f.HasIPv6, nil)
+}
+
+func unbound(s config.Settings, v6 bool, win *winUnbound) (string, error) {
 	if err := checkSettings(s); err != nil {
 		return "", err
 	}
@@ -47,10 +51,13 @@ func Unbound(s config.Settings, f Facts) (string, error) {
 	var l lines
 	l.add("server:")
 	l.indent = "\t"
+	if win != nil {
+		win.head(&l)
+	}
 	l.add("interface: %s", "127.0.0.1@5335")
 	l.add("access-control: 127.0.0.0/8 allow")
 	l.add("do-ip4: yes")
-	l.add("do-ip6: %s", yes(f.HasIPv6))
+	l.add("do-ip6: %s", yes(v6))
 	l.add("prefer-ip6: no")
 	l.add("do-udp: yes")
 	l.add("do-tcp: yes")
@@ -90,8 +97,11 @@ func Unbound(s config.Settings, f Facts) (string, error) {
 		l.add("private-address: %s", r)
 	}
 	servers, dot := upstreams[s.DNS.Upstream]
-	if dot {
+	if dot && win == nil {
 		l.add("tls-cert-bundle: \"%s\"", CertBundle)
+	}
+	if dot && win != nil {
+		l.add("tls-win-cert: yes")
 	}
 	if dot {
 		l.indent = ""
@@ -101,7 +111,7 @@ func Unbound(s config.Settings, f Facts) (string, error) {
 		l.add("name: \".\"")
 		l.add("forward-tls-upstream: yes")
 		for _, sv := range servers {
-			if sv.v6 && !f.HasIPv6 {
+			if sv.v6 && !v6 {
 				continue
 			}
 			l.add("forward-addr: %s@853#%s", sv.addr, sv.name)

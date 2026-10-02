@@ -1,0 +1,2 @@
+$a = Get-NetAdapter -Name 'Veyl UDP' -ErrorAction SilentlyContinue
+if ($a) { 'adapter=' + $a.InterfaceDescription }

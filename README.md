@@ -8,7 +8,7 @@ Rent a VPS running Debian 12/13 or Ubuntu 22.04/24.04 (1 vCPU and 512 MB RAM is 
 
     curl -fsSL https://raw.githubusercontent.com/VeylVPN/backend/main/install.sh | sudo bash
 
-The installer checks the machine, installs OpenVPN, Unbound, Caddy and nftables, builds `veyl` from source with a checksum-verified Go toolchain, opens a minimal firewall (your SSH ports, 80 and 443) and prints a link:
+The installer checks the machine, installs OpenVPN, Unbound, Caddy and nftables, downloads the `veyl` release for your CPU and checks it against the release's `SHA256SUMS` (or builds from source with a checksum-verified Go toolchain when there is no release yet, or with `--build`), opens a minimal firewall (your SSH ports, 80 and 443) and prints a link:
 
     Open this link to finish setup:
       http://203.0.113.5/setup#<one-time token>
@@ -24,6 +24,47 @@ Open it and answer a few questions:
 Press install and watch every step go green. You get your account number, the address to type into the Veyl app, a link to the admin panel and an encrypted backup. The setup page then locks itself.
 
 Lost the link? `sudo veyl setup-link`. Re-running the installer repairs and updates without touching keys, settings or accounts.
+
+## Windows
+
+Veyl also runs on Windows Server 2019, 2022 and 2025 and on Windows 10/11 Pro (64-bit x86). Open PowerShell as Administrator and run:
+
+    irm https://raw.githubusercontent.com/VeylVPN/backend/main/install.ps1 | iex
+
+To pass options, run it as a script block, or download the file and run it:
+
+    & ([scriptblock]::Create((irm https://raw.githubusercontent.com/VeylVPN/backend/main/install.ps1))) -Domain vpn.example.com -Email you@example.com
+    .\install.ps1 -Domain vpn.example.com -Email you@example.com -Yes
+
+Options: `-Domain`, `-Email`, `-Branch` (build that branch), `-Version` (install that release), `-Build`, `-Yes`, `-Force`, `-Uninstall`, `-Purge`. Re-running repairs and updates; `veyl update` does the same.
+
+What it does, every download pinned to a SHA-256 checked before use:
+
+- OpenVPN 2.7.7 from the official community MSI (the Authenticode signature must also be "OpenVPN Inc."), with only the OpenVPN core and the TAP-Windows6 driver
+- Unbound 1.26.1 from NLnet Labs and Caddy 2.11.6, both into `C:\Program Files\Veyl`
+- the `veyl.exe` release, verified with `SHA256SUMS`, or a source build with the pinned Go 1.27.1 toolchain cross-checked against go.dev
+- `C:\ProgramData\Veyl` locked to SYSTEM and Administrators, then the same setup link as on Linux
+
+How it runs:
+
+| Windows service | Runs as | Does |
+| --- | --- | --- |
+| `Veyl` (`veyl serve`) | `NT SERVICE\Veyl` | API, admin panel, setup page, connection hook |
+| `VeylAgent` (`veyl agent`) | LocalSystem | fixed, validated system operations over a unix socket |
+| `VeylDNS` (`veyl dns`) | `NT SERVICE\VeylDNS` | content-blocking DNS front |
+| `VeylOpenVPNUDP`, `VeylOpenVPNTCP` | LocalSystem | `veyl` supervises `openvpn.exe` and restarts it with backoff |
+| `VeylUnbound`, `VeylCaddy` | `NT SERVICE\VeylUnbound`, `NT SERVICE\VeylCaddy` | resolver and HTTPS, supervised the same way |
+
+`veyl` talks to the Service Control Manager itself, so every service has delayed automatic start and restart-on-failure recovery actions. OpenVPN uses two named TAP adapters, "Veyl UDP" and "Veyl TCP", Windows NAT (`New-NetNat`, 10.8.0.0/15) and IP forwarding; the DNS addresses live on "Veyl UDP". Windows Defender Firewall rules are added in a "Veyl" group (VPN UDP port, TCP fallback, 80, 443, and DNS only from the tunnels) and only that group is removed on uninstall. The OpenVPN management interface listens on 127.0.0.1 with a random password readable by SYSTEM, Administrators and the `Veyl` service only.
+
+Differences from Linux, said plainly:
+
+- **Stealth** cannot share port 443 with the website because OpenVPN's `port-share` does not exist on Windows. Stealth on Windows is a TCP fallback on its own port, 993 by default (configurable as `stealth_port`). `/v1/info` reports `platform` and `stealth_port`, so the apps use the right port.
+- **IPv6 inside the tunnel is off** on Windows.
+- **The agent socket** is protected by its folder's access list (SYSTEM, Administrators, the `Veyl` service). Windows has no `SO_PEERCRED`, so there is no per-connection peer check like on Linux; anyone who can open the socket is already an administrator or the Veyl service.
+- **Forwarded traffic is not filtered.** Windows Firewall rules do not apply to routed packets, so VPN clients can reach private networks and cloud metadata addresses the server can reach. On Linux the firewall blocks them. Block those ranges at your provider, or use Linux.
+- **Privacy is weaker.** OpenVPN runs with `verb 0` and no log file, Caddy discards its logs, Unbound logs nothing and firewall packet logging is switched off, but Windows itself keeps event logs and sends telemetry that Veyl cannot fully turn off. Linux is recommended when privacy matters most.
+- Windows Update manages system updates; the "automatic updates" setting only applies to Linux.
 
 ## Features
 
@@ -87,7 +128,7 @@ Privilege separation, the same idea Mullvad uses between its app and daemon:
     sudo veyl admin reset-password
     sudo veyl backup <file>
     sudo veyl restore [-force] <file>
-    sudo veyl update
+    sudo veyl update                          newest release (or the branch you name)
     sudo veyl uninstall [-purge]
 
 ## Why OpenVPN
@@ -100,6 +141,13 @@ It runs over UDP or TCP, so it gets through networks that block other VPNs, and 
     VEYL_REAL_OPENVPN=1 go test -run TestRealOpenVPN ./internal/hook
 
 The second command runs a real OpenVPN server and clients against the hook. Standard library only.
+
+Windows code is split by build tags (`_windows.go`), but rendering, agent command sequences and PowerShell quoting are plain Go and tested on every platform:
+
+    GOOS=windows GOARCH=amd64 go vet ./...
+    VEYL_PWSH=$(command -v pwsh) go test ./internal/winps
+
+CI (`.github/workflows/ci.yml`) runs vet and tests on Ubuntu and Windows, gofmt, shellcheck and a PowerShell parse of `install.ps1`. Pushing a `v*` tag runs `.github/workflows/release.yml`, which builds `veyl` for linux/amd64, linux/arm64 and windows/amd64 and attaches the archives and `SHA256SUMS` to the GitHub release.
 
 ## Layout
 
@@ -115,4 +163,9 @@ The second command runs a real OpenVPN server and clients against the hook. Stan
     internal/store      accounts, devices, invites
     internal/pki        CA, certificates, CRL, tls-crypt-v2
     internal/backup     encrypted backups
-    install.sh          the installer
+    internal/supervise  restarts OpenVPN, Unbound and Caddy on Windows
+    internal/winsvc     Windows Service Control Manager integration
+    internal/winacl     Windows access lists and service SIDs
+    internal/winps      PowerShell quoting
+    install.sh          the Linux installer
+    install.ps1         the Windows installer

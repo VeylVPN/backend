@@ -13,6 +13,7 @@ const status = "TITLE\tOpenVPN 2.6\nTIME\tx\t1\nHEADER\tCLIENT_LIST\tCommon Name
 
 func fake(t *testing.T, killed chan string) string {
 	t.Helper()
+	requireUnixSockets(t)
 	dir, err := os.MkdirTemp("", "v")
 	if err != nil {
 		t.Fatal(err)

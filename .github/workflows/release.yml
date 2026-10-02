@@ -1,0 +1,68 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: test
+        run: |
+          go vet ./...
+          go test ./...
+      - name: build
+        shell: bash
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]{1,32})?$ ]]; then
+            echo "bad tag $TAG"
+            exit 1
+          fi
+          ver="${TAG#v}"
+          rm -rf build dist
+          mkdir -p dist
+          for target in linux/amd64 linux/arm64 windows/amd64; do
+            os="${target%/*}"
+            arch="${target#*/}"
+            work="build/${os}_${arch}"
+            mkdir -p "$work"
+            ext=""
+            if [ "$os" = "windows" ]; then
+              ext=".exe"
+            fi
+            CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath -ldflags "-s -w -X github.com/veylvpn/backend/internal/app.Version=$TAG" -o "$work/veyl$ext" ./cmd/veyl
+            cp README.md "$work/"
+            if [ "$os" = "windows" ]; then
+              cp install.ps1 "$work/"
+              (cd "$work" && zip -q -X "../../dist/veyl_${ver}_${os}_${arch}.zip" veyl.exe install.ps1 README.md)
+            else
+              cp install.sh "$work/"
+              tar -C "$work" --owner=0 --group=0 --sort=name --mtime="@$(git log -1 --format=%ct)" -czf "dist/veyl_${ver}_${os}_${arch}.tar.gz" veyl install.sh README.md
+            fi
+          done
+          (cd dist && sha256sum -- * > SHA256SUMS)
+          cat dist/SHA256SUMS
+      - name: publish
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
+          else
+            gh release create "$TAG" dist/* --title "$TAG" --verify-tag --generate-notes
+          fi

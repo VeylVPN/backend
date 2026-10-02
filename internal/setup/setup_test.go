@@ -13,6 +13,7 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -631,7 +632,7 @@ func TestLinkAndNewToken(t *testing.T) {
 		t.Fatal("token not rotated")
 	}
 	fi, _ := os.Stat(p.SetupToken())
-	if fi.Mode().Perm() != 0o600 {
+	if runtime.GOOS != "windows" && fi.Mode().Perm() != 0o600 {
 		t.Fatal(fi.Mode())
 	}
 	if Link("203.0.113.5", "t", false) != "http://203.0.113.5/setup#t" || Link("2001:db8::1", "t", true) != "https://[2001:db8::1]/setup#t" {

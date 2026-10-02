@@ -10,6 +10,9 @@ import (
 	"github.com/veylvpn/backend/internal/app"
 	"github.com/veylvpn/backend/internal/dns"
 	"github.com/veylvpn/backend/internal/hook"
+	"github.com/veylvpn/backend/internal/supervise"
+	"github.com/veylvpn/backend/internal/web"
+	"github.com/veylvpn/backend/internal/winsvc"
 )
 
 const usage = `usage: veyl <command>
@@ -28,11 +31,13 @@ const usage = `usage: veyl <command>
   version
 
   serve | agent | dns | hook | init [dir]   used by the system services
+  service <command> | supervise <unit>      used by Windows services
 `
 
 func main() {
 	log.SetOutput(io.Discard)
 	agent.DownloadBlocklists = dns.Download
+	agent.FontURL, agent.FontSHA256 = web.FontURL, web.FontSHA256
 	os.Exit(run(os.Args[1:]))
 }
 
@@ -53,6 +58,10 @@ func run(args []string) int {
 		return hook.Main(rest)
 	case "init":
 		return initMain(rest)
+	case "service":
+		return winsvc.Run(func() int { return run(rest) })
+	case "supervise":
+		return supervise.Main(rest, os.Stderr)
 	case "status":
 		return agent.Main([]string{"run", "status"})
 	case "update":

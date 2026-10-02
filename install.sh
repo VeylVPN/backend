@@ -2,6 +2,8 @@
 set -Eeuo pipefail
 
 REPO_URL="https://github.com/VeylVPN/backend.git"
+REPO_SLUG="VeylVPN/backend"
+RELEASES="https://github.com/VeylVPN/backend/releases/download"
 SRC_DIR="/opt/veyl/src"
 BUILD_DIR="/opt/veyl/build"
 BIN="/usr/local/bin/veyl"
@@ -13,6 +15,10 @@ MODULE="github.com/veylvpn/backend"
 DOMAIN=""
 EMAIL=""
 BRANCH="main"
+BRANCH_SET=0
+VERSION=""
+FORCE_BUILD=0
+RELEASE=""
 ASSUME_YES=0
 FORCE=0
 UNINSTALL=0
@@ -51,7 +57,9 @@ Usage: install.sh [options]
 
   --domain <name>   domain already pointing at this server
   --email <addr>    email for certificate expiry notices
-  --branch <name>   source branch to build (default main)
+  --branch <name>   build this source branch instead of using a release
+  --version <tag>   install this release (for example v0.3.0)
+  --build           build from source even when a release exists
   --yes             do not ask for confirmation
   --force           continue on unsupported systems or busy ports
   --uninstall       remove Veyl (keeps /var/lib/veyl)
@@ -75,7 +83,17 @@ parse_args() {
 		--branch)
 			[ "$#" -ge 2 ] || die "--branch needs a value"
 			BRANCH="$2"
+			BRANCH_SET=1
 			shift 2
+			;;
+		--version)
+			[ "$#" -ge 2 ] || die "--version needs a value"
+			VERSION="$2"
+			shift 2
+			;;
+		--build)
+			FORCE_BUILD=1
+			shift
 			;;
 		--yes | -y)
 			ASSUME_YES=1
@@ -112,10 +130,49 @@ parse_args() {
 	if ! [[ "$BRANCH" =~ ^[A-Za-z0-9._/-]{1,100}$ ]] || [[ "$BRANCH" == -* ]]; then
 		die "invalid branch: $BRANCH"
 	fi
+	if [ -n "$VERSION" ] && ! valid_tag "$VERSION"; then
+		die "invalid version: $VERSION"
+	fi
 }
 
 run() {
 	"$@" >>"$LOG" 2>&1
+}
+
+valid_tag() {
+	[[ "$1" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]{1,32})?$ ]]
+}
+
+resolve_release() {
+	[ "$FORCE_BUILD" -eq 0 ] && [ "$BRANCH_SET" -eq 0 ] || return 1
+	local tag="$VERSION"
+	if [ -z "$tag" ]; then
+		tag="$(curl -fsSL --proto '=https' --tlsv1.2 --max-time 20 -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/$REPO_SLUG/releases/latest" 2>/dev/null |
+			grep -o '"tag_name": *"[^"]*"' | head -n 1 | sed 's/^.*"\([^"]*\)"$/\1/')" || tag=""
+	fi
+	valid_tag "$tag" || return 1
+	RELEASE="$tag"
+	BRANCH="$tag"
+}
+
+download_release() {
+	local ver="${RELEASE#v}" file sums base
+	file="veyl_${ver}_linux_${ARCH}.tar.gz"
+	base="$RELEASES/$RELEASE"
+	step "Downloading veyl $RELEASE"
+	rm -rf "$BUILD_DIR"
+	mkdir -p "$BUILD_DIR"
+	run curl -fsSL --proto '=https' --tlsv1.2 -o "$BUILD_DIR/SHA256SUMS" "$base/SHA256SUMS" || return 1
+	run curl -fsSL --proto '=https' --tlsv1.2 -o "$BUILD_DIR/$file" "$base/$file" || return 1
+	sums="$(grep -E "^[0-9a-f]{64}  \*?$file\$" "$BUILD_DIR/SHA256SUMS" || true)"
+	[ "$(printf '%s\n' "$sums" | grep -c .)" -eq 1 ] || die "SHA256SUMS has no single entry for $file"
+	(cd "$BUILD_DIR" && printf '%s\n' "$sums" | sha256sum -c --status -) || die "checksum mismatch for $file"
+	run tar -C "$BUILD_DIR" -xzf "$BUILD_DIR/$file" veyl
+	[ -f "$BUILD_DIR/veyl" ] || die "release archive has no veyl binary"
+	install -m 0755 -o root -g root "$BUILD_DIR/veyl" "$BIN.new"
+	mv -f "$BIN.new" "$BIN"
+	cleanup_build
+	say "    veyl $RELEASE (release, checksum verified)"
 }
 
 cleanup_build() {
@@ -280,7 +337,13 @@ maybe_reexec() {
 		return 0
 	fi
 	step "Continuing with the installer from the fetched source"
-	local args=(--yes --branch "$BRANCH")
+	local args=(--yes)
+	if [ -n "$RELEASE" ]; then
+		args+=(--version "$RELEASE")
+	else
+		args+=(--branch "$BRANCH")
+	fi
+	[ "$FORCE_BUILD" -eq 1 ] && args+=(--build)
 	[ -n "$DOMAIN" ] && args+=(--domain "$DOMAIN")
 	[ -n "$EMAIL" ] && args+=(--email "$EMAIL")
 	[ "$FORCE" -eq 1 ] && args+=(--force)
@@ -470,10 +533,14 @@ main() {
 		confirm "Install Veyl on this server?"
 	fi
 	install_packages
+	resolve_release || true
 	fetch_source
 	maybe_reexec
-	check_memory
-	build
+	if [ -z "$RELEASE" ] || ! download_release; then
+		[ -n "$RELEASE" ] && say "    release download failed, building $RELEASE from source"
+		check_memory
+		build
+	fi
 	create_users
 	init_pki
 	configure

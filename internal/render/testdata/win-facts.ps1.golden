@@ -1,0 +1,4 @@
+$r = Get-NetRoute -AddressFamily IPv4 -DestinationPrefix '0.0.0.0/0' -ErrorAction SilentlyContinue | Sort-Object -Property RouteMetric | Select-Object -First 1
+if ($r) { 'wan=' + $r.ifIndex }
+$o = Get-CimInstance -ClassName Win32_OperatingSystem
+'os=' + $o.Caption

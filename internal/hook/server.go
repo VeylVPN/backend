@@ -132,10 +132,7 @@ func (s *Server) Serve(ctx context.Context, socketPath string) error {
 	}
 	defer os.Remove(socketPath)
 	defer l.Close()
-	if err := os.Chmod(socketPath, 0o660); err != nil {
-		return err
-	}
-	if err := s.chgrp(socketPath); err != nil {
+	if err := s.secure(socketPath); err != nil {
 		return err
 	}
 	go func() {

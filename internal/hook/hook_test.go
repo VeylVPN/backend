@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -53,6 +54,7 @@ func newFixture(t *testing.T) *fixture {
 
 func (f *fixture) serve(t *testing.T) {
 	t.Helper()
+	requireUnixSockets(t)
 	sd, err := os.MkdirTemp("", "vh")
 	if err != nil {
 		t.Fatal(err)
@@ -159,7 +161,7 @@ func TestServeSocket(t *testing.T) {
 	f := newFixture(t)
 	f.serve(t)
 	fi, err := os.Stat(f.sock)
-	if err != nil || fi.Mode().Perm() != 0o660 {
+	if err != nil || (runtime.GOOS != "windows" && fi.Mode().Perm() != 0o660) {
 		t.Fatalf("socket mode %v %v", fi, err)
 	}
 	r, err := hookapi.Ask(f.sock, hookapi.Request{Event: hookapi.EventConnect, CN: f.device}, time.Second)

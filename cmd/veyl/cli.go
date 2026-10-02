@@ -15,6 +15,7 @@ import (
 	"github.com/veylvpn/backend/internal/admin"
 	"github.com/veylvpn/backend/internal/api"
 	"github.com/veylvpn/backend/internal/backup"
+	"github.com/veylvpn/backend/internal/privdrop"
 	"github.com/veylvpn/backend/internal/setup"
 	"github.com/veylvpn/backend/internal/store"
 )
@@ -158,8 +159,8 @@ func adminMain(args []string) int {
 		fmt.Fprint(os.Stderr, usage)
 		return 2
 	}
-	if os.Geteuid() != 0 {
-		return fail(errors.New("run this as root"))
+	if !privdrop.Elevated() {
+		return fail(errors.New("run this as root or Administrator"))
 	}
 	if err := asService(); err != nil {
 		return fail(err)
@@ -190,8 +191,8 @@ func publicHost() (string, bool) {
 }
 
 func setupLinkMain(args []string) int {
-	if os.Geteuid() != 0 {
-		return fail(errors.New("run this as root"))
+	if !privdrop.Elevated() {
+		return fail(errors.New("run this as root or Administrator"))
 	}
 	if err := asService(); err != nil {
 		return fail(err)

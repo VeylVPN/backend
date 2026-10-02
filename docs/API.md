@@ -76,6 +76,7 @@ curl -s $VEYL/v1/info
   "proto": "udp",
   "stealth": true,
   "stealth_port": 443,
+  "platform": "linux",
   "name": "Veyl",
   "version": "0.2.0",
   "registration": "invite",
@@ -284,7 +285,7 @@ sudo openvpn --config veyl.ovpn
 
 What the profile contains:
 
-- `remote <host> <udp port> udp` and, when the server has stealth on, `remote <host> 443 tcp-client` as a fallback for networks that block VPNs
+- `remote <host> <udp port> udp` and, when the server has stealth on, `remote <host> <stealth port> tcp-client` as a fallback for networks that block VPNs (443 on Linux, 993 by default on Windows)
 - `connect-retry 2 5`, `server-poll-timeout 4`, `resolv-retry infinite`, `nobind`, `persist-key`, `persist-tun`
 - `remote-cert-tls server`, `verify-x509-name veyl-server name`, `tls-version-min 1.2`
 - `data-ciphers AES-256-GCM:CHACHA20-POLY1305:AES-128-GCM`, with no `data-ciphers-fallback` so kernel data channel offload keeps working
