@@ -82,12 +82,12 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = 'Continue'
-          $probe = & powershell -NoProfile -NonInteractive -Command "Write-Host probe-ok" 2>&1 | Out-String
-          Write-Host ('probe: [' + $probe.Trim() + ']')
           $out = & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File ./install.ps1 -Domain 'bad domain;calc' 2>&1 | Out-String
           $code = $LASTEXITCODE
-          Write-Host ('file mode exit=' + $code + ' length=' + $out.Length)
-          Write-Host $out
           if ($code -ne 1 -or $out -notmatch 'invalid domain') {
+            Write-Host ('unexpected exit=' + $code)
+            Write-Host $out
             exit 1
           }
+          Write-Host 'install.ps1 rejected the bad domain as expected'
+          exit 0
