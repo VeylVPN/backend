@@ -756,3 +756,26 @@ func TestFontsStep(t *testing.T) {
 		t.Fatal(h3.status("fonts"))
 	}
 }
+
+func TestSSHDRejectionDoesNotStopApply(t *testing.T) {
+	h := newHarness(t, testSettings())
+	h.r.fail["sshd -t"] = -1
+	if _, err := h.do(agentapi.OpApply); err != nil {
+		t.Fatal("apply stopped because sshd rejected the logging drop-in:", err)
+	}
+	if _, err := os.Stat(filepath.Join(h.root, render.SSHDFile)); !os.IsNotExist(err) {
+		t.Fatal("rejected sshd drop-in was left in place")
+	}
+	if fi, err := os.Stat(filepath.Join(h.root, "/run/sshd")); err != nil || !fi.IsDir() {
+		t.Fatal("privilege separation directory not prepared before sshd -t")
+	}
+	found := false
+	for _, ev := range h.events {
+		if ev.Step == "privacy" && ev.Status == agentapi.StatusOK && strings.Contains(ev.Detail, "sshd logging left unchanged") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("privacy step did not report the skipped sshd change", h.events)
+	}
+}

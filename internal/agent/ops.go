@@ -297,14 +297,16 @@ func (a *Agent) stepPrivacy(ctx context.Context) (string, error) {
 			return "", err
 		}
 		if changed {
+			_ = os.MkdirAll(a.path("/run/sshd"), 0o755)
 			if _, err := a.run(ctx, quick, "sshd", "-t"); err != nil {
 				_ = st.rollback()
-				return "", fmt.Errorf("sshd rejected the drop-in, left unchanged: %w", err)
+				done = append(done, "sshd logging left unchanged")
+			} else {
+				if a.systemctl(ctx, "reload", "ssh.service") != nil {
+					_ = a.systemctl(ctx, "reload", "sshd.service")
+				}
+				done = append(done, "sshd quiet")
 			}
-			if a.systemctl(ctx, "reload", "ssh.service") != nil {
-				_ = a.systemctl(ctx, "reload", "sshd.service")
-			}
-			done = append(done, "sshd quiet")
 		}
 	}
 	if len(done) == 0 {
