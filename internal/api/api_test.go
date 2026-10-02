@@ -28,6 +28,7 @@ import (
 )
 
 func TestMain(m *testing.M) {
+	config.Platform = config.PlatformLinux
 	os.Exit(pkitest.Main(m))
 }
 

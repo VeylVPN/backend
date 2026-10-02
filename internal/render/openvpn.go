@@ -2,7 +2,7 @@ package render
 
 import (
 	"fmt"
-	"path/filepath"
+	"path"
 
 	"github.com/veylvpn/backend/internal/config"
 	"github.com/veylvpn/backend/internal/pki"
@@ -27,7 +27,7 @@ func lookupInstance(name string) (instance, error) {
 }
 
 func OpenVPNPath(name string) string {
-	return filepath.Join(OpenVPNConfDir, "veyl-"+name+".conf")
+	return path.Join(OpenVPNConfDir, "veyl-"+name+".conf")
 }
 
 func OpenVPN(s config.Settings, f Facts, name string) (string, error) {
@@ -46,7 +46,7 @@ func OpenVPN(s config.Settings, f Facts, name string) (string, error) {
 			return "", fmt.Errorf("%w: openssl version", ErrFacts)
 		}
 	}
-	p := config.DefaultPaths()
+	p := config.LinuxPaths()
 	data := p.Data
 	v6 := IPv6(s, f)
 	var l lines
@@ -66,14 +66,14 @@ func OpenVPN(s config.Settings, f Facts, name string) (string, error) {
 		l.add("port %d", config.StealthPort)
 		l.add("port-share 127.0.0.1 %d", config.CaddyTLSPort)
 	}
-	l.add("ca %s", filepath.Join(data, pki.CAFile))
-	l.add("cert %s", filepath.Join(data, pki.ServerCertFile))
-	l.add("key %s", filepath.Join(data, pki.ServerKeyFile))
+	l.add("ca %s", path.Join(data, pki.CAFile))
+	l.add("cert %s", path.Join(data, pki.ServerCertFile))
+	l.add("key %s", path.Join(data, pki.ServerKeyFile))
 	l.add("dh none")
 	if AtLeast(f.OpenVPNVersion, 2, 6, 0) {
-		l.add("tls-crypt-v2 %s force-cookie", filepath.Join(data, TLSCryptV2Server))
+		l.add("tls-crypt-v2 %s force-cookie", path.Join(data, TLSCryptV2Server))
 	} else {
-		l.add("tls-crypt-v2 %s", filepath.Join(data, TLSCryptV2Server))
+		l.add("tls-crypt-v2 %s", path.Join(data, TLSCryptV2Server))
 	}
 	l.add("tls-crypt-v2-verify \"%s hook verify\"", config.BinPath)
 	l.add("client-connect \"%s hook connect\"", config.BinPath)

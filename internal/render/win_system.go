@@ -146,13 +146,20 @@ func WinTapScript(instance string) (string, error) {
 	sc.Add("Set-NetIPInterface -InterfaceAlias %s -AddressFamily IPv4 -Forwarding Enabled -WeakHostReceive Enabled -WeakHostSend Enabled", name)
 	if instance == config.InstanceUDP {
 		sc.Add("$have = @(Get-NetIPAddress -InterfaceAlias %s -AddressFamily IPv4 -ErrorAction SilentlyContinue | ForEach-Object { $_.IPAddress })", name)
+		sc.Add("$added = 0")
 		sc.Add("foreach ($i in 1..%s) {", winps.I(config.MaxMask()+1))
 		sc.Add("  $ip = %s + $i", winps.S(config.DNSPrefix+"."))
 		sc.Add("  if ($have -notcontains $ip) {")
 		sc.Add("    New-NetIPAddress -InterfaceAlias %s -IPAddress $ip -PrefixLength 32 -SkipAsSource $true | Out-Null", name)
+		sc.Add("    $added++")
 		sc.Add("  }")
 		sc.Add("}")
-		sc.Add("Start-Service -Name %s -ErrorAction SilentlyContinue", winps.S(config.WinServiceDNS))
+		sc.Add("if ($added -gt 0) {")
+		sc.Add("  Restart-Service -Name %s -Force -ErrorAction SilentlyContinue", winps.S(config.WinServiceDNS))
+		sc.Add("} else {")
+		sc.Add("  Start-Service -Name %s -ErrorAction SilentlyContinue", winps.S(config.WinServiceDNS))
+		sc.Add("}")
+		sc.Add("'dns addresses ' + $added")
 	}
 	return sc.String(), nil
 }

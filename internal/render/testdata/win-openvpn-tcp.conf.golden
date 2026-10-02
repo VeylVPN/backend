@@ -1,0 +1,35 @@
+dev tun
+dev-node "Veyl TCP"
+disable-dco
+topology subnet
+server 10.9.0.0 255.255.255.0
+ip-win32 netsh
+proto tcp-server
+port 993
+ca "C:\\ProgramData\\Veyl\\data\\ca.crt"
+cert "C:\\ProgramData\\Veyl\\data\\server.crt"
+key "C:\\ProgramData\\Veyl\\data\\server.key"
+dh none
+tls-crypt-v2 "C:\\ProgramData\\Veyl\\data\\tls-crypt-v2-server.key" force-cookie
+tls-crypt-v2-verify "'C:\\Program Files\\Veyl\\veyl.exe' hook verify"
+client-connect "'C:\\Program Files\\Veyl\\veyl.exe' hook connect"
+script-security 2
+tmp-dir "C:\\ProgramData\\Veyl\\run"
+crl-verify "C:\\ProgramData\\Veyl\\data\\crl.pem"
+remote-cert-tls client
+verify-client-cert require
+tls-server
+tls-cert-profile preferred
+tls-version-min 1.2
+tls-groups X25519MLKEM768:X25519:secp256r1
+data-ciphers AES-256-GCM:CHACHA20-POLY1305:AES-128-GCM
+allow-compression no
+push "redirect-gateway def1 bypass-dhcp"
+push "block-outside-dns"
+keepalive 10 60
+max-clients 250
+persist-key
+persist-tun
+verb 0
+mute-replay-warnings
+management 127.0.0.1 7506 "C:\\ProgramData\\Veyl\\data\\mgmt-tcp.pw"

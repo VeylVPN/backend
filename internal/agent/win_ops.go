@@ -17,6 +17,7 @@ import (
 
 	"github.com/veylvpn/backend/internal/agentapi"
 	"github.com/veylvpn/backend/internal/config"
+	"github.com/veylvpn/backend/internal/ovpn"
 	"github.com/veylvpn/backend/internal/pki"
 	"github.com/veylvpn/backend/internal/render"
 	"github.com/veylvpn/backend/internal/winacl"
@@ -611,7 +612,33 @@ func (a *Agent) winStartCore(ctx context.Context) (string, error) {
 	return "running", nil
 }
 
+func (a *Agent) mgmtState(instance string) (string, error) {
+	if a.MgmtState != nil {
+		return a.MgmtState(instance)
+	}
+	c := &ovpn.Client{Socket: fmt.Sprintf("%s%s:%d", ovpn.TCPPrefix, config.MgmtHost, config.MgmtPort(instance)), PasswordFile: a.path(a.Paths.MgmtPassword(instance))}
+	return c.State()
+}
+
+func (a *Agent) waitTunnel(ctx context.Context, instance string) error {
+	for i := 0; i < winWaitTries; i++ {
+		if st, err := a.mgmtState(instance); err == nil && st == "CONNECTED" {
+			return nil
+		}
+		if err := a.Sleep(ctx, time.Second); err != nil {
+			return err
+		}
+	}
+	return fmt.Errorf("openvpn %s did not finish starting", instance)
+}
+
 func (a *Agent) winDNSFilter(ctx context.Context) (string, error) {
+	if err := a.waitTunnel(ctx, config.InstanceUDP); err != nil {
+		return "", err
+	}
+	if err := a.TapUp(ctx, config.InstanceUDP); err != nil {
+		return "", err
+	}
 	if err := a.winRestart(ctx, config.WinServiceDNS); err != nil {
 		return "", err
 	}
@@ -876,6 +903,9 @@ func (a *Agent) winStatus(ctx context.Context) (map[string]string, error) {
 }
 
 func (a *Agent) winBootstrap(ctx context.Context, emit Emit, domain, email string) error {
+	if emit == nil {
+		emit = func(agentapi.Event) {}
+	}
 	if domain != "" || email != "" {
 		if err := step(emit, "address", func() (string, error) { return a.seed(domain, email) }); err != nil {
 			return err
@@ -924,6 +954,9 @@ func (a *Agent) winBootstrap(ctx context.Context, emit Emit, domain, email strin
 }
 
 func (a *Agent) winUninstall(ctx context.Context, emit Emit, purge bool) error {
+	if emit == nil {
+		emit = func(agentapi.Event) {}
+	}
 	_ = step(emit, "services", func() (string, error) {
 		for _, svc := range render.WinServices() {
 			if svc.Name == config.WinServiceAgent {

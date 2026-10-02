@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"syscall"
 	"testing"
 	"time"
@@ -88,7 +89,7 @@ func TestReloadBadFileKeepsOld(t *testing.T) {
 	os.Remove(p)
 	writeFile(t, p, "keep.example.com\n", time.Unix(1700000001, 0))
 	os.Chmod(p, 0)
-	if os.Geteuid() == 0 {
+	if os.Geteuid() == 0 || runtime.GOOS == "windows" {
 		t.Skip("root ignores permissions")
 	}
 	if _, err := b.Reload(true); err == nil {

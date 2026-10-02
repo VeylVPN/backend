@@ -1,0 +1,10 @@
+$o = Get-CimInstance -ClassName Win32_OperatingSystem
+'os=' + $o.Caption + ' ' + $o.Version
+'uptime=' + [int64]((Get-Date) - $o.LastBootUpTime).TotalSeconds
+'mem_total=' + ([int64]$o.TotalVisibleMemorySize * 1024)
+'mem_avail=' + ([int64]$o.FreePhysicalMemory * 1024)
+$d = Get-PSDrive -Name $env:SystemDrive.TrimEnd(':')
+'disk_total=' + ([int64]$d.Used + [int64]$d.Free)
+'disk_free=' + [int64]$d.Free
+$fw = @(Get-NetFirewallRule -Group 'Veyl' -ErrorAction SilentlyContinue | Where-Object { $_.Enabled -eq 'True' })
+'firewall=' + $fw.Count

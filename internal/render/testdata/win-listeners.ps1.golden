@@ -1,0 +1,2 @@
+Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | ForEach-Object { 'tcp ' + $_.LocalAddress + ' ' + $_.LocalPort }
+Get-NetUDPEndpoint -ErrorAction SilentlyContinue | ForEach-Object { 'udp ' + $_.LocalAddress + ' ' + $_.LocalPort }

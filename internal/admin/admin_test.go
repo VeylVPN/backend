@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -236,7 +237,7 @@ func TestPasswordFileAndReset(t *testing.T) {
 		t.Fatal(err)
 	}
 	fi, err := os.Stat(p.Admin())
-	if err != nil || fi.Mode().Perm() != 0o600 {
+	if err != nil || (runtime.GOOS != "windows" && fi.Mode().Perm() != 0o600) {
 		t.Fatal("bad perms", err)
 	}
 	if err := updateCreds(p, func(c *Creds) error { c.TOTPSecret = NewTOTPSecret(); return nil }); err != nil {

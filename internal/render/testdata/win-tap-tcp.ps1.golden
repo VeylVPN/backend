@@ -1,0 +1,1 @@
+Set-NetIPInterface -InterfaceAlias 'Veyl TCP' -AddressFamily IPv4 -Forwarding Enabled -WeakHostReceive Enabled -WeakHostSend Enabled

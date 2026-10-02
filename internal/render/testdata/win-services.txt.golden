@@ -1,0 +1,7 @@
+Veyl|NT SERVICE\Veyl|S-1-5-80-1360608433-1346744643-898648952-2736702901-4055874840|veyl|"C:\Program Files\Veyl\veyl.exe" service serve
+VeylAgent|LocalSystem|S-1-5-18|veyl-agent|"C:\Program Files\Veyl\veyl.exe" service agent
+VeylDNS|NT SERVICE\VeylDNS|S-1-5-80-510884550-3407399170-1700005941-79862336-978613998|veyl-dns|"C:\Program Files\Veyl\veyl.exe" service dns -blocklists C:\ProgramData\Veyl\data\blocklists -upstream 127.0.0.1:5335
+VeylOpenVPNUDP|LocalSystem|S-1-5-18|openvpn-server@veyl-udp|"C:\Program Files\Veyl\veyl.exe" service supervise openvpn-udp
+VeylOpenVPNTCP|LocalSystem|S-1-5-18|openvpn-server@veyl-tcp|"C:\Program Files\Veyl\veyl.exe" service supervise openvpn-tcp
+VeylUnbound|NT SERVICE\VeylUnbound|S-1-5-80-2540841572-2820369587-3335063031-3212748342-1960373399|unbound|"C:\Program Files\Veyl\veyl.exe" service supervise unbound
+VeylCaddy|NT SERVICE\VeylCaddy|S-1-5-80-4188620630-1359709750-3415719718-1357854237-869415574|caddy|"C:\Program Files\Veyl\veyl.exe" service supervise caddy

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/veylvpn/backend/internal/config"
@@ -55,7 +56,7 @@ func TestRoundTrip(t *testing.T) {
 		}
 		e, _ := lookup(f)
 		fi, _ := os.Stat(filepath.Join(dst.Data, f))
-		if fi.Mode().Perm() != e.perm {
+		if runtime.GOOS != "windows" && fi.Mode().Perm() != e.perm {
 			t.Fatal("perm", f, fi.Mode().Perm())
 		}
 	}

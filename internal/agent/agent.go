@@ -34,6 +34,7 @@ type Agent struct {
 	VerifyTimeout time.Duration
 	Windows       bool
 	Async         func(func())
+	MgmtState     func(instance string) (string, error)
 
 	once sync.Once
 	lock chan struct{}
