@@ -7,13 +7,11 @@ import (
 	"crypto/sha1"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"encoding/hex"
 	"encoding/pem"
 	"errors"
 	"math/big"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 )
 
@@ -22,7 +20,7 @@ const (
 	CAKeyFile      = "ca.key"
 	ServerCertFile = "server.crt"
 	ServerKeyFile  = "server.key"
-	TLSCryptFile   = "tls-crypt.key"
+	TLSCryptV2File = "tls-crypt-v2-server.key"
 	CRLFile        = "crl.pem"
 	ServerCN       = "veyl-server"
 )
@@ -33,11 +31,10 @@ var (
 )
 
 type CA struct {
-	dir      string
-	cert     *x509.Certificate
-	key      *ecdsa.PrivateKey
-	certPEM  []byte
-	tlsCrypt []byte
+	dir     string
+	cert    *x509.Certificate
+	key     *ecdsa.PrivateKey
+	certPEM []byte
 }
 
 func writeFile(path string, data []byte, perm os.FileMode) error {
@@ -170,31 +167,12 @@ func (c *CA) createServer() error {
 	return writeFile(filepath.Join(c.dir, ServerCertFile), pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), 0o644)
 }
 
-func GenerateTLSCrypt() ([]byte, error) {
-	raw := make([]byte, 256)
-	if _, err := rand.Read(raw); err != nil {
-		return nil, err
-	}
-	var sb strings.Builder
-	sb.WriteString("-----BEGIN OpenVPN Static key V1-----\n")
-	for i := 0; i < len(raw); i += 16 {
-		sb.WriteString(hex.EncodeToString(raw[i : i+16]))
-		sb.WriteString("\n")
-	}
-	sb.WriteString("-----END OpenVPN Static key V1-----\n")
-	return []byte(sb.String()), nil
-}
-
 func Load(dir string) (*CA, error) {
 	cb, err := os.ReadFile(filepath.Join(dir, CAFile))
 	if err != nil {
 		return nil, err
 	}
 	kb, err := os.ReadFile(filepath.Join(dir, CAKeyFile))
-	if err != nil {
-		return nil, err
-	}
-	tb, err := os.ReadFile(filepath.Join(dir, TLSCryptFile))
 	if err != nil {
 		return nil, err
 	}
@@ -206,7 +184,7 @@ func Load(dir string) (*CA, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &CA{dir: dir, cert: cert, key: key, certPEM: cb, tlsCrypt: tb}, nil
+	return &CA{dir: dir, cert: cert, key: key, certPEM: cb}, nil
 }
 
 func Init(dir string) (*CA, error) {
@@ -218,12 +196,8 @@ func Init(dir string) (*CA, error) {
 			return nil, err
 		}
 	}
-	if !exists(filepath.Join(dir, TLSCryptFile)) {
-		tc, err := GenerateTLSCrypt()
-		if err != nil {
-			return nil, err
-		}
-		if err := writeFile(filepath.Join(dir, TLSCryptFile), tc, 0o600); err != nil {
+	if !exists(filepath.Join(dir, TLSCryptV2File)) {
+		if err := GenerateTLSCryptV2Server(filepath.Join(dir, TLSCryptV2File)); err != nil {
 			return nil, err
 		}
 	}
@@ -245,8 +219,6 @@ func Init(dir string) (*CA, error) {
 }
 
 func (c *CA) CertPEM() []byte { return c.certPEM }
-
-func (c *CA) TLSCrypt() []byte { return c.tlsCrypt }
 
 func (c *CA) Cert() *x509.Certificate { return c.cert }
 
