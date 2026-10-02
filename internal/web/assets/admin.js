@@ -579,7 +579,7 @@
 
     p.append(
       h("p", { class: "card-title", text: "General" }),
-      h("div", { class: "card stack" }, field("Server name", name, "Shown in the app."), field("Address", host, "Changing it gets a new certificate. Apps need the new address."), field("Certificate email", email), field("App download link", appUrl)),
+      h("div", { class: "card stack" }, field("Server name", name, "Shown in the admin panel and to apps that ask the server for its details."), field("Address", host, "Changing it gets a new certificate. Apps need the new address."), field("Certificate email", email), field("App download link", appUrl)),
       h("p", { class: "card-title", text: "VPN" }),
       h("div", { class: "card card-tight" }, stealth.row, v6.row, pq.row,
         h("div", { class: "toggle-row" }, h("div", { class: "txt" }, h("div", { class: "t", text: "Devices per account" }), h("div", { class: "d", text: "Default for everyone." })), h("div", { class: "stepper" }, minus, out, plus))),

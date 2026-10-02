@@ -403,7 +403,7 @@
       title: "Your VPN",
       lead: "Good defaults are already on. Change what you like.",
       body: [
-        h("div", { class: "card" }, h("div", { class: "field" }, h("label", { class: "label", for: "name", text: "Server name" }), name, h("p", { class: "hint", text: "Shown in the app." }))),
+        h("div", { class: "card" }, h("div", { class: "field" }, h("label", { class: "label", for: "name", text: "Server name" }), name, h("p", { class: "hint", text: "Shown in the admin panel and to apps that ask the server for its details." }))),
         h("div", { class: "card card-tight" }, stealth.row, v6.row, pq.row,
           h("div", { class: "toggle-row" }, h("div", { class: "txt" }, h("div", { class: "t", text: "Devices per account" }), h("div", { class: "d", text: "How many phones and computers each person can connect." })), h("div", { class: "stepper" }, minus, out, plus))
         ),
@@ -440,7 +440,7 @@
     screen({
       eyebrow: stepLabel(),
       title: "Privacy and blocking",
-      lead: "Veyl never logs what anyone does. Pick what to block for everyone. Each person can change it in the app.",
+      lead: "Veyl never logs what anyone does. Pick what to block for everyone. You can change it for any account later.",
       body: [
         h("p", { class: "card-title", text: "Block by default" }),
         cats,
