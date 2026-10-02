@@ -17,13 +17,13 @@ Self-hostable, no-log VPN server. Rent a cheap VPS, point a domain at it, run on
 
 ## Install
 
-    git clone https://github.com/veylvpn/backend && cd backend
-    sudo deploy/install.sh vpn.example.com [path-to-frontend-dist]
-    sudo veyl account new
+    curl -fsSL https://raw.githubusercontent.com/VeylVPN/backend/main/install.sh | sudo bash
 
-Point an A record for `vpn.example.com` at the VPS first. Without a domain, pass the public IP; the API then runs over plain HTTP and a domain is strongly recommended.
+The installer checks the system, installs OpenVPN, nftables, Unbound and Caddy, builds `veyl` from source with a checksum-verified Go toolchain, opens a minimal firewall (your SSH ports, 80, 443) and prints a one-time setup link. Finish setup in the browser. Options: `--domain`, `--email`, `--branch`, `--yes`, `--force`.
 
-Open ports: 22/tcp, 80/tcp, 443/tcp, 1194/udp.
+Running it again repairs and updates an existing server without touching keys, settings or accounts (`sudo veyl update` does the same). `sudo bash install.sh --uninstall [--purge]` removes Veyl; `/var/lib/veyl` is kept unless `--purge` is given.
+
+Open ports: SSH, 80/tcp, 443/tcp, 1194/udp.
 
 ## Why OpenVPN
 

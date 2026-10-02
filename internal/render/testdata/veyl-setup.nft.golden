@@ -1,0 +1,43 @@
+table inet veyl
+delete table inet veyl
+table inet veyl {
+	chain input {
+		type filter hook input priority filter; policy drop;
+		ct state established,related accept
+		ct state invalid drop
+		iif "lo" accept
+		meta l4proto icmp icmp type { destination-unreachable, time-exceeded, parameter-problem } accept
+		meta l4proto icmp icmp type echo-request limit rate 5/second burst 10 packets accept
+		meta l4proto ipv6-icmp icmpv6 type { destination-unreachable, packet-too-big, time-exceeded, parameter-problem } accept
+		meta l4proto ipv6-icmp icmpv6 type { nd-router-advert, nd-neighbor-solicit, nd-neighbor-advert } ip6 hoplimit 255 accept
+		meta l4proto ipv6-icmp icmpv6 type echo-request limit rate 5/second burst 10 packets accept
+		ip6 saddr fe80::/10 udp sport 547 udp dport 546 accept
+		tcp dport { 22 } accept
+		tcp dport { 80, 443 } accept
+		iifname { "veyl-udp", "veyl-tcp", "lo" } ip daddr 10.64.0.0/24 udp dport 53 accept
+		iifname { "veyl-udp", "veyl-tcp", "lo" } ip daddr 10.64.0.0/24 tcp dport 53 accept
+		iifname { "veyl-udp", "veyl-tcp" } ip daddr { 10.8.0.1, 10.9.0.1 } tcp dport 8081 accept
+	}
+
+	chain forward {
+		type filter hook forward priority filter; policy drop;
+		tcp flags syn tcp option maxseg size set rt mtu
+		ct state established,related accept
+		ct state invalid drop
+		iifname { "veyl-udp", "veyl-tcp" } ip daddr { 0.0.0.0/8, 10.0.0.0/8, 100.64.0.0/10, 127.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12, 192.0.0.0/24, 192.168.0.0/16, 198.18.0.0/15, 224.0.0.0/4, 240.0.0.0/4 } drop
+		iifname { "veyl-udp", "veyl-tcp" } ip6 daddr { ::1/128, fc00::/7, fe80::/10, ff00::/8 } drop
+		iifname { "veyl-udp", "veyl-tcp" } oifname "ens3" meta nfproto ipv4 accept
+	}
+}
+
+table ip veyl_nat
+delete table ip veyl_nat
+table ip veyl_nat {
+	chain postrouting {
+		type nat hook postrouting priority srcnat; policy accept;
+		oifname "ens3" ip saddr { 10.8.0.0/24, 10.9.0.0/24 } masquerade
+	}
+}
+
+table ip6 veyl_nat6
+delete table ip6 veyl_nat6

@@ -1,0 +1,6 @@
+table inet veyl
+delete table inet veyl
+table ip veyl_nat
+delete table ip veyl_nat
+table ip6 veyl_nat6
+delete table ip6 veyl_nat6

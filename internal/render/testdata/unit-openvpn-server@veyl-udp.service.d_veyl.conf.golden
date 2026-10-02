@@ -1,0 +1,9 @@
+[Unit]
+After=veyl-dnsif.service veyl-firewall.service
+Wants=veyl-dnsif.service
+
+[Service]
+ExecStart=
+ExecStart=/usr/sbin/openvpn --suppress-timestamps --config %i.conf
+UMask=0007
+LimitNPROC=64

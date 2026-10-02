@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily Veyl blocklist update
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=4h
+AccuracySec=1h
+
+[Install]
+WantedBy=timers.target

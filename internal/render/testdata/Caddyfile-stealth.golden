@@ -1,0 +1,25 @@
+{
+	admin off
+	email admin@example.com
+	https_port 8443
+	default_bind 127.0.0.1
+	auto_https disable_redirects
+	log default {
+		output discard
+	}
+	servers {
+		protocols h1 h2
+	}
+}
+
+http:// {
+	bind 0.0.0.0 [::]
+	redir https://{host}{uri} 308
+}
+
+vpn.example.com {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:8080 {
+		header_up X-Forwarded-Proto https
+	}
+}

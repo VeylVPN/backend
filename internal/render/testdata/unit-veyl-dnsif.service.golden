@@ -1,0 +1,13 @@
+[Unit]
+Description=Veyl DNS addresses
+After=network-pre.target
+Before=network.target veyl-dns.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/ip -batch /etc/veyl/dnsif.ip
+ExecStop=-/usr/sbin/ip -force -batch /etc/veyl/dnsif-down.ip
+
+[Install]
+WantedBy=multi-user.target
