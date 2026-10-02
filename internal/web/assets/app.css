@@ -657,7 +657,7 @@ dialog[open] { animation: rise .2s ease both; }
 
 @media (min-width: 960px) {
   .shell { grid-template-columns: 248px minmax(0, 1fr); }
-  .side { height: 100vh; height: 100dvh; display: flex; flex-direction: column; border-bottom: 0; border-right: 1px solid var(--line); background: rgba(13, 13, 14, .85); }
+  .side { position: sticky; top: 0; align-self: start; height: 100vh; height: 100dvh; display: flex; flex-direction: column; border-bottom: 0; border-right: 1px solid var(--line); background: rgba(13, 13, 14, .85); }
   .side-head { padding: 26px 22px 18px; flex-direction: column; align-items: flex-start; gap: 6px; }
   .side-head .who { text-align: left; max-width: 100%; }
   .nav { flex-direction: column; overflow: visible; padding: 8px 12px; gap: 2px; }

@@ -34,3 +34,4 @@ persist-tun
 verb 0
 mute-replay-warnings
 management /run/veyl/mgmt-tcp unix
+management-client-group veyl

@@ -104,5 +104,6 @@ func OpenVPN(s config.Settings, f Facts, name string) (string, error) {
 	l.add("verb 0")
 	l.add("mute-replay-warnings")
 	l.add("management %s unix", p.Mgmt(in.name))
+	l.add("management-client-group %s", config.ServiceUser)
 	return l.String(), nil
 }
