@@ -112,12 +112,13 @@ func (a *Agent) handle(ctx context.Context, c *net.UnixConn) {
 		_ = enc.Encode(ev)
 	}
 	uid, err := peerUID(c)
+	_ = c.SetReadDeadline(time.Now().Add(10 * time.Second))
+	line, rerr := bufio.NewReaderSize(io.LimitReader(c, maxRequest), maxRequest).ReadSlice('\n')
 	if err != nil || !a.allowed(uid) {
 		send(agentapi.Event{Done: true, Error: "forbidden"})
 		return
 	}
-	_ = c.SetReadDeadline(time.Now().Add(10 * time.Second))
-	line, err := bufio.NewReaderSize(io.LimitReader(c, maxRequest), maxRequest).ReadSlice('\n')
+	err = rerr
 	if err != nil {
 		send(agentapi.Event{Done: true, Error: "bad request"})
 		return
