@@ -88,3 +88,31 @@ func TestDNSAddressing(t *testing.T) {
 		t.Fatal(MaxMask())
 	}
 }
+
+func TestLiveReloadsAndValidates(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "settings.json")
+	l, err := NewLive(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if l.Get().UDPPort != 1194 {
+		t.Fatal("defaults")
+	}
+	if _, err := l.Update(func(s *Settings) error { s.UDPPort = 1195; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := l.Update(func(s *Settings) error { s.UDPPort = 22; return nil }); err == nil {
+		t.Fatal("invalid update saved")
+	}
+	if l.Get().UDPPort != 1195 {
+		t.Fatal(l.Get().UDPPort)
+	}
+	other := Defaults()
+	other.UDPPort = 1300
+	if err := Save(p, other); err != nil {
+		t.Fatal(err)
+	}
+	if l.Get().UDPPort != 1300 {
+		t.Fatal("did not pick up external change")
+	}
+}
