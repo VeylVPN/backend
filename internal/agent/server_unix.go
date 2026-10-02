@@ -63,7 +63,11 @@ func (a *Agent) Listen(sock string) (*net.UnixListener, error) {
 		return nil, err
 	}
 	ln.SetUnlinkOnClose(true)
-	if _, gid, err := a.Lookup(config.ServiceUser); err == nil {
+	group := a.Group
+	if group == "" {
+		group = config.ServiceUser
+	}
+	if _, gid, err := a.Lookup(group); err == nil {
 		_ = a.Chown(sock, 0, gid)
 	}
 	if err := os.Chmod(sock, 0o660); err != nil {

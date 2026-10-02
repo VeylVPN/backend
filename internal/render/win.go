@@ -188,5 +188,5 @@ func WinCaddyfilePath() string {
 }
 
 func WinCaddyfile(s config.Settings) (string, error) {
-	return Caddyfile(s, false)
+	return caddyfile(s, false, WinImportGlob)
 }

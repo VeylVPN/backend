@@ -16,6 +16,7 @@ const (
 	OpDNSUpdate = "dns-update"
 	OpRestart   = "restart"
 	OpPing      = "ping"
+	OpUpdate    = "update"
 )
 
 const (
@@ -26,7 +27,8 @@ const (
 )
 
 type Request struct {
-	Op string `json:"op"`
+	Op  string `json:"op"`
+	Arg string `json:"arg,omitempty"`
 }
 
 type Event struct {

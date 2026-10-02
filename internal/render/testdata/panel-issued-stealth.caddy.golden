@@ -1,0 +1,18 @@
+http://control.example.com {
+	bind 0.0.0.0 [::]
+	handle /.well-known/acme-challenge/* {
+		root * /var/www/veyl-panel-acme
+		file_server
+	}
+	handle {
+		redir https://{host}{uri} 308
+	}
+}
+
+control.example.com {
+	tls /etc/caddy/veyl-panel/control.example.com.crt /etc/caddy/veyl-panel/control.example.com.key
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:8090 {
+		header_up X-Forwarded-Proto https
+	}
+}

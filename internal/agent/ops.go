@@ -186,6 +186,7 @@ func (a *Agent) stepPKI(ctx context.Context) (string, error) {
 		{"state.json", 0o600, uid, gid},
 		{"admin.json", 0o600, uid, gid},
 		{"setup-token", 0o600, uid, gid},
+		{"panel-keys.json", 0o600, uid, gid},
 	}
 	for _, p := range perms {
 		path := filepath.Join(data, p.name)

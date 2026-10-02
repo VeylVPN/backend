@@ -1,0 +1,24 @@
+http://203.0.113.7 {
+	handle /control/* {
+		uri strip_prefix /control
+		reverse_proxy 127.0.0.1:8090 {
+			header_up X-Forwarded-Proto http
+		}
+	}
+	handle {
+		redir /control/setup 302
+	}
+}
+
+https://203.0.113.7 {
+	tls internal
+	handle /control/* {
+		uri strip_prefix /control
+		reverse_proxy 127.0.0.1:8090 {
+			header_up X-Forwarded-Proto https
+		}
+	}
+	handle {
+		redir /control/setup 302
+	}
+}

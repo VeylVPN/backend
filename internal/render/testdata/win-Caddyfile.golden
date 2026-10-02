@@ -14,3 +14,5 @@ vpn.example.com {
 		header_up X-Forwarded-Proto https
 	}
 }
+
+import C:/ProgramData/Veyl/caddy/veyl.d/*.caddy

@@ -71,13 +71,17 @@ func (a *Agent) handle(ctx context.Context, c *net.UnixConn) {
 	var req agentapi.Request
 	dec := json.NewDecoder(strings.NewReader(string(line)))
 	dec.DisallowUnknownFields()
-	if err := dec.Decode(&req); err != nil || len(req.Op) > 32 {
+	if err := dec.Decode(&req); err != nil || len(req.Op) > 32 || len(req.Arg) > 64 {
 		send(agentapi.Event{Done: true, Error: "bad request"})
 		return
 	}
 	opCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), opTimeout)
 	defer cancel()
-	data, err := a.Do(opCtx, req.Op, send)
+	do := a.DoArg
+	if a.Ops != nil {
+		do = a.Ops
+	}
+	data, err := do(opCtx, req.Op, req.Arg, send)
 	if err != nil {
 		send(agentapi.Event{Done: true, Error: err.Error(), Data: data})
 		return

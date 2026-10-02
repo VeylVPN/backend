@@ -8,6 +8,7 @@ SRC_DIR="/opt/veyl/src"
 BUILD_DIR="/opt/veyl/build"
 BIN="/usr/local/bin/veyl"
 DATA_DIR="/var/lib/veyl"
+PANEL_DIR="/var/lib/veyl-panel"
 LOG="/run/veyl-install.log"
 SWAPFILE="/var/lib/veyl-build.swap"
 MODULE="github.com/veylvpn/backend"
@@ -23,6 +24,9 @@ ASSUME_YES=0
 FORCE=0
 UNINSTALL=0
 PURGE=0
+PANEL=0
+PANEL_ONLY=0
+PANEL_DOMAIN=""
 ARCH=""
 TEMP_SWAP=0
 SELF_SUM=""
@@ -64,6 +68,9 @@ Usage: install.sh [options]
   --force           continue on unsupported systems or busy ports
   --uninstall       remove Veyl (keeps /var/lib/veyl)
   --purge           with --uninstall, also delete /var/lib/veyl
+  --panel           also install Veyl Control, the optional fleet panel
+  --panel-only      install only Veyl Control on this server, no VPN node
+  --panel-domain <name>  domain for Veyl Control (must differ from the node)
 EOF
 }
 
@@ -111,6 +118,21 @@ parse_args() {
 			PURGE=1
 			shift
 			;;
+		--panel)
+			PANEL=1
+			shift
+			;;
+		--panel-only)
+			PANEL=1
+			PANEL_ONLY=1
+			shift
+			;;
+		--panel-domain)
+			[ "$#" -ge 2 ] || die "--panel-domain needs a value"
+			PANEL_DOMAIN="$2"
+			PANEL=1
+			shift 2
+			;;
 		-h | --help)
 			usage
 			exit 0
@@ -123,6 +145,12 @@ parse_args() {
 	done
 	if [ -n "$DOMAIN" ] && ! [[ "$DOMAIN" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$ ]]; then
 		die "invalid domain: $DOMAIN"
+	fi
+	if [ -n "$PANEL_DOMAIN" ] && ! [[ "$PANEL_DOMAIN" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$ ]]; then
+		die "invalid panel domain: $PANEL_DOMAIN"
+	fi
+	if [ -n "$PANEL_DOMAIN" ] && [ "$PANEL_DOMAIN" = "$DOMAIN" ]; then
+		die "the panel needs its own domain, different from the node domain"
 	fi
 	if [ -n "$EMAIL" ] && ! [[ "$EMAIL" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,63}$ ]]; then
 		die "invalid email: $EMAIL"
@@ -229,6 +257,7 @@ check_os() {
 	esac
 	[ -d /run/systemd/system ] || die "systemd is not running as init"
 	[ "$(cat /proc/1/comm 2>/dev/null)" = "systemd" ] || die "PID 1 is not systemd"
+	[ "$PANEL_ONLY" -eq 1 ] && return 0
 	if [ ! -c /dev/net/tun ]; then
 		mkdir -p /dev/net
 		mknod /dev/net/tun c 10 200 >/dev/null 2>&1 || true
@@ -304,7 +333,13 @@ install_packages() {
 	if [ -z "$candidate" ] || [ "$candidate" = "(none)" ]; then
 		add_caddy_repo
 	fi
-	apt_get install openvpn nftables unbound caddy ca-certificates curl git iproute2 openssl unattended-upgrades tar
+	if [ "$PANEL_ONLY" -eq 1 ]; then
+		apt_get install caddy certbot ca-certificates curl git iproute2 tar
+	elif [ "$PANEL" -eq 1 ]; then
+		apt_get install openvpn nftables unbound caddy certbot ca-certificates curl git iproute2 openssl unattended-upgrades tar
+	else
+		apt_get install openvpn nftables unbound caddy ca-certificates curl git iproute2 openssl unattended-upgrades tar
+	fi
 }
 
 fetch_source() {
@@ -347,6 +382,9 @@ maybe_reexec() {
 	[ -n "$DOMAIN" ] && args+=(--domain "$DOMAIN")
 	[ -n "$EMAIL" ] && args+=(--email "$EMAIL")
 	[ "$FORCE" -eq 1 ] && args+=(--force)
+	[ "$PANEL" -eq 1 ] && args+=(--panel)
+	[ "$PANEL_ONLY" -eq 1 ] && args+=(--panel-only)
+	[ -n "$PANEL_DOMAIN" ] && args+=(--panel-domain "$PANEL_DOMAIN")
 	export VEYL_REEXEC=1
 	exec bash "$SRC_DIR/install.sh" "${args[@]}"
 }
@@ -493,8 +531,36 @@ finish() {
 	banner "$url"
 }
 
+panel_install() {
+	step "Installing Veyl Control"
+	local args=()
+	[ -n "$PANEL_DOMAIN" ] && args+=(-domain "$PANEL_DOMAIN")
+	[ -n "$EMAIL" ] && args+=(-email "$EMAIL")
+	local ip
+	ip="$(public_ip)"
+	[ -n "$ip" ] && args+=(-ip "$ip")
+	if ! "$BIN" panel install "${args[@]}" | tee -a "$LOG"; then
+		die "Veyl Control installation failed"
+	fi
+}
+
+detect_panel() {
+	if [ -d "$PANEL_DIR" ] && [ -f /etc/systemd/system/veyl-panel.service ]; then
+		PANEL=1
+		if [ ! -f "$DATA_DIR/ca.key" ]; then
+			PANEL_ONLY=1
+		fi
+	fi
+}
+
 do_uninstall() {
 	step "Removing Veyl"
+	if [ -x "$BIN" ] && [ -f /etc/systemd/system/veyl-panel.service ]; then
+		local pargs=()
+		[ "$PURGE" -eq 1 ] && pargs+=(-purge)
+		"$BIN" panel uninstall "${pargs[@]}" || true
+		[ "$PURGE" -eq 1 ] && rm -rf "$PANEL_DIR"
+	fi
 	if [ -x "$BIN" ]; then
 		local args=()
 		[ "$PURGE" -eq 1 ] && args+=(-purge)
@@ -525,8 +591,9 @@ main() {
 	STARTED=1
 	trap 'fail "$?"' ERR
 	trap 'cleanup_build' EXIT
+	detect_panel
 	check_os
-	if [ -x "$BIN" ] && [ -f "$DATA_DIR/ca.key" ]; then
+	if [ -x "$BIN" ] && { [ -f "$DATA_DIR/ca.key" ] || [ "$PANEL_ONLY" -eq 1 ]; }; then
 		step "Existing installation found, updating and repairing"
 	else
 		check_ports
@@ -541,10 +608,15 @@ main() {
 		check_memory
 		build
 	fi
-	create_users
-	init_pki
-	configure
-	finish
+	if [ "$PANEL_ONLY" -eq 0 ]; then
+		create_users
+		init_pki
+		configure
+		finish
+	fi
+	if [ "$PANEL" -eq 1 ]; then
+		panel_install
+	fi
 	trap - ERR
 	rm -f "$LOG"
 }

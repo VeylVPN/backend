@@ -4,14 +4,19 @@ import (
 	"fmt"
 
 	"github.com/veylvpn/backend/internal/config"
+	"github.com/veylvpn/backend/internal/panelcfg"
 )
 
 func Caddyfile(s config.Settings, stealth bool) (string, error) {
+	return caddyfile(s, stealth, panelcfg.ImportGlob)
+}
+
+func caddyfile(s config.Settings, stealth bool, glob string) (string, error) {
 	if err := checkSettings(s); err != nil {
 		return "", err
 	}
 	if s.Host == "" {
-		return caddySetup(), nil
+		return caddySetup(glob), nil
 	}
 	if !config.ValidHost(s.Host) {
 		return "", fmt.Errorf("%w: host", ErrSettings)
@@ -57,6 +62,7 @@ func Caddyfile(s config.Settings, stealth bool) (string, error) {
 	l.add("}")
 	l.indent = ""
 	l.add("}")
+	caddyImport(&l, glob)
 	return l.String(), nil
 }
 
@@ -73,7 +79,7 @@ func caddyGlobalTail(l *lines) {
 	l.add("}")
 }
 
-func caddySetup() string {
+func caddySetup(glob string) string {
 	var l lines
 	l.add("{")
 	l.indent = "\t"
@@ -88,5 +94,6 @@ func caddySetup() string {
 	l.add("reverse_proxy %s", config.WebListen)
 	l.indent = ""
 	l.add("}")
+	caddyImport(&l, glob)
 	return l.String()
 }
