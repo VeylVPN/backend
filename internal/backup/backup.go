@@ -55,6 +55,7 @@ var files = []entry{
 	{"server.key", 0o600, false},
 	{"tls-crypt-v2-server.key", 0o640, false},
 	{"crl.pem", 0o644, false},
+	{"panel-keys.json", 0o600, false},
 }
 
 func lookup(name string) (entry, bool) {
@@ -210,7 +211,7 @@ func Open(data []byte, passphrase string) (map[string][]byte, error) {
 			return nil, ErrFormat
 		}
 	}
-	for _, name := range []string{"state.json", "admin.json"} {
+	for _, name := range []string{"state.json", "admin.json", "panel-keys.json"} {
 		if b, ok := out[name]; ok && !json.Valid(b) {
 			return nil, ErrFormat
 		}

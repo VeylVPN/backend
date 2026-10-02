@@ -1,0 +1,7 @@
+control.example.com {
+	tls ops@example.com
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:8090 {
+		header_up X-Forwarded-Proto https
+	}
+}

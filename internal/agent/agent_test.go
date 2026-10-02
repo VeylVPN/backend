@@ -61,6 +61,9 @@ func (f *fakeRunner) Run(ctx context.Context, name string, args ...string) ([]by
 		if n > 0 {
 			f.fail[cmd] = n - 1
 		}
+		if o, ok := f.out[cmd]; ok {
+			return []byte(o), errors.New("exit status 1")
+		}
 		return []byte("boom"), errors.New("exit status 1")
 	}
 	if name == "systemctl" && len(args) == 2 && args[0] == "is-active" {

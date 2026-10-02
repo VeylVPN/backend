@@ -1,16 +1,12 @@
 {
 	admin off
-	auto_https off
+	email ops@example.com
 	log default {
 		output discard
 	}
 	servers {
 		protocols h1 h2
 	}
-}
-
-:80 {
-	reverse_proxy 127.0.0.1:8080
 }
 
 import /etc/caddy/veyl.d/*.caddy

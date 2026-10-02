@@ -1,0 +1,40 @@
+[Unit]
+Description=Veyl Control
+After=network-online.target veyl-panel-agent.service
+Wants=network-online.target veyl-panel-agent.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=notify
+NotifyAccess=main
+User=veyl-panel
+Group=veyl-panel
+ExecStart=/usr/local/bin/veyl panel serve
+Restart=always
+RestartSec=2
+WatchdogSec=30
+TimeoutStartSec=60
+UMask=0007
+CapabilityBoundingSet=
+ReadWritePaths=/var/lib/veyl-panel /run/veyl-panel
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+
+[Install]
+WantedBy=multi-user.target

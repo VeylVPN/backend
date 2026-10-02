@@ -17,6 +17,7 @@ import (
 	"github.com/veylvpn/backend/internal/agentapi"
 	"github.com/veylvpn/backend/internal/app"
 	"github.com/veylvpn/backend/internal/config"
+	"github.com/veylvpn/backend/internal/panelkey"
 	"github.com/veylvpn/backend/internal/store"
 	"github.com/veylvpn/backend/internal/web"
 )
@@ -62,6 +63,9 @@ type Admin struct {
 	blMu sync.Mutex
 	bl   map[string]blInfo
 
+	keyMu sync.Mutex
+	keys  *panelkey.Store
+
 	JobTimeout time.Duration
 }
 
@@ -84,7 +88,7 @@ func (a *Admin) Handler() http.Handler {
 	mux.Handle("GET /admin/", a.pages)
 	mux.HandleFunc("POST /v1/admin/login", a.login)
 	mux.HandleFunc("GET /v1/admin/session", a.sessionInfo)
-	mux.HandleFunc("POST /v1/admin/logout", a.auth(a.logout))
+	mux.HandleFunc("POST /v1/admin/logout", a.session(a.logout))
 	mux.HandleFunc("GET /v1/admin/overview", a.auth(a.overview))
 	mux.HandleFunc("GET /v1/admin/accounts", a.auth(a.listAccounts))
 	mux.HandleFunc("POST /v1/admin/accounts", a.auth(a.createAccount))
@@ -98,12 +102,13 @@ func (a *Admin) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/admin/settings", a.auth(a.getSettings))
 	mux.HandleFunc("PUT /v1/admin/settings", a.auth(a.putSettings))
 	mux.HandleFunc("GET /v1/admin/apply-progress", a.auth(a.progress))
-	mux.HandleFunc("POST /v1/admin/password", a.auth(a.changePassword))
-	mux.HandleFunc("POST /v1/admin/totp/setup", a.auth(a.totpSetup))
-	mux.HandleFunc("POST /v1/admin/totp/enable", a.auth(a.totpEnable))
-	mux.HandleFunc("POST /v1/admin/totp/disable", a.auth(a.totpDisable))
-	mux.HandleFunc("POST /v1/admin/backup", a.auth(a.backup))
+	mux.HandleFunc("POST /v1/admin/password", a.session(a.changePassword))
+	mux.HandleFunc("POST /v1/admin/totp/setup", a.session(a.totpSetup))
+	mux.HandleFunc("POST /v1/admin/totp/enable", a.session(a.totpEnable))
+	mux.HandleFunc("POST /v1/admin/totp/disable", a.session(a.totpDisable))
+	mux.HandleFunc("POST /v1/admin/backup", a.session(a.backup))
 	mux.HandleFunc("POST /v1/admin/dns/update", a.auth(a.dnsUpdate))
+	a.panelRoutes(mux)
 	return a.wrap(mux)
 }
 
@@ -137,13 +142,14 @@ func (a *Admin) wrap(next http.Handler) http.Handler {
 			web.NotFound(w)
 			return
 		}
-		if a.d.Settings != nil && a.d.Settings.Get().AdminVPNOnly && !InTunnel(web.ClientIP(r)) {
+		machine := bearer(r) != "" || r.URL.Path == PairPath
+		if !machine && a.d.Settings != nil && a.d.Settings.Get().AdminVPNOnly && !InTunnel(web.ClientIP(r)) {
 			web.Headers(w, r)
 			web.NotFound(w)
 			return
 		}
 		web.Headers(w, r)
-		if strings.HasPrefix(r.URL.Path, "/v1/admin/") && r.Method != http.MethodGet && r.Method != http.MethodHead {
+		if !machine && strings.HasPrefix(r.URL.Path, "/v1/admin/") && r.Method != http.MethodGet && r.Method != http.MethodHead {
 			if !a.csrfOK(r) {
 				web.Error(w, http.StatusForbidden, "CSRF", "Your session expired. Reload the page and try again.")
 				return
@@ -226,7 +232,22 @@ func (a *Admin) lookup(r *http.Request) (*session, string) {
 }
 
 func (a *Admin) auth(fn http.HandlerFunc) http.HandlerFunc {
+	session := a.session(fn)
 	return func(w http.ResponseWriter, r *http.Request) {
+		if bearer(r) != "" {
+			a.keyAuth(fn)(w, r)
+			return
+		}
+		session(w, r)
+	}
+}
+
+func (a *Admin) session(fn http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if bearer(r) != "" {
+			web.Error(w, http.StatusForbidden, "FORBIDDEN", "Node keys cannot do this.")
+			return
+		}
 		s, k := a.lookup(r)
 		if s == nil {
 			web.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "Please sign in again.")
@@ -377,6 +398,10 @@ func (a *Admin) sessionInfo(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *Admin) startJob(kind, op string) (*web.Job, error) {
+	return a.startRequest(kind, agentapi.Request{Op: op})
+}
+
+func (a *Admin) startRequest(kind string, req agentapi.Request) (*web.Job, error) {
 	a.jobMu.Lock()
 	defer a.jobMu.Unlock()
 	if a.job != nil && a.job.Running() {
@@ -392,7 +417,7 @@ func (a *Admin) startJob(kind, op string) (*web.Job, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), a.JobTimeout)
 		defer cancel()
 		last := ""
-		err := a.d.Agent.Do(ctx, agentapi.Request{Op: op}, func(ev agentapi.Event) {
+		err := a.d.Agent.Do(ctx, req, func(ev agentapi.Event) {
 			if ev.Done && ev.Error != "" {
 				last = ev.Error
 			}

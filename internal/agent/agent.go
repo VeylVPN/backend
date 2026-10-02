@@ -31,6 +31,8 @@ type Agent struct {
 	Sleep         func(ctx context.Context, d time.Duration) error
 	HealthTimeout time.Duration
 	VerifyTimeout time.Duration
+	Group         string
+	Ops           func(ctx context.Context, op, arg string, emit Emit) (map[string]string, error)
 
 	once sync.Once
 	lock chan struct{}
@@ -151,14 +153,21 @@ type Emit func(agentapi.Event)
 
 func mutating(op string) bool {
 	switch op {
-	case agentapi.OpApply, agentapi.OpTLS, agentapi.OpDNSUpdate, agentapi.OpRestart:
+	case agentapi.OpApply, agentapi.OpTLS, agentapi.OpDNSUpdate, agentapi.OpRestart, agentapi.OpUpdate:
 		return true
 	}
 	return false
 }
 
 func (a *Agent) Do(ctx context.Context, op string, emit Emit) (map[string]string, error) {
+	return a.DoArg(ctx, op, "", emit)
+}
+
+func (a *Agent) DoArg(ctx context.Context, op, arg string, emit Emit) (map[string]string, error) {
 	a.init()
+	if arg != "" && op != agentapi.OpRestart {
+		return nil, ErrUnknownOp
+	}
 	if emit == nil {
 		emit = func(agentapi.Event) {}
 	}
@@ -183,7 +192,12 @@ func (a *Agent) Do(ctx context.Context, op string, emit Emit) (map[string]string
 	case agentapi.OpDNSUpdate:
 		return a.DNSUpdate(ctx, emit)
 	case agentapi.OpRestart:
+		if arg != "" {
+			return nil, a.RestartService(ctx, emit, arg)
+		}
 		return nil, a.Restart(ctx, emit)
+	case agentapi.OpUpdate:
+		return nil, a.Update(ctx, emit)
 	}
 	return nil, ErrUnknownOp
 }

@@ -57,6 +57,7 @@ func Caddyfile(s config.Settings, stealth bool) (string, error) {
 	l.add("}")
 	l.indent = ""
 	l.add("}")
+	caddyImport(&l)
 	return l.String(), nil
 }
 
@@ -88,5 +89,6 @@ func caddySetup() string {
 	l.add("reverse_proxy %s", config.WebListen)
 	l.indent = ""
 	l.add("}")
+	caddyImport(&l)
 	return l.String()
 }

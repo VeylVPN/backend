@@ -1,0 +1,38 @@
+http://203.0.113.7 {
+	bind 0.0.0.0 [::]
+	handle /control/* {
+		uri strip_prefix /control
+		reverse_proxy 127.0.0.1:8090 {
+			header_up X-Forwarded-Proto http
+		}
+	}
+	handle {
+		reverse_proxy 127.0.0.1:8080
+	}
+}
+
+https://203.0.113.7 {
+	tls internal
+	handle /control/* {
+		uri strip_prefix /control
+		reverse_proxy 127.0.0.1:8090 {
+			header_up X-Forwarded-Proto https
+		}
+	}
+	handle {
+		reverse_proxy 127.0.0.1:8080
+	}
+}
+
+http://control.example.com {
+	bind 0.0.0.0 [::]
+	handle /.well-known/acme-challenge/* {
+		root * /var/www/veyl-panel-acme
+		file_server
+	}
+	handle {
+		reverse_proxy 127.0.0.1:8090 {
+			header_up X-Forwarded-Proto http
+		}
+	}
+}

@@ -23,3 +23,5 @@ http:// {
 		header_up X-Forwarded-Proto https
 	}
 }
+
+import /etc/caddy/veyl.d/*.caddy

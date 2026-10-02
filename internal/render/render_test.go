@@ -5,6 +5,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -32,11 +33,13 @@ func golden(t *testing.T, name, got string) {
 	assertNoComments(t, name, got)
 }
 
+var blockComment = regexp.MustCompile(`(^|\s)/\*`)
+
 func assertNoComments(t *testing.T, name, s string) {
 	t.Helper()
 	for _, line := range strings.Split(s, "\n") {
 		x := strings.TrimSpace(line)
-		if strings.HasPrefix(x, "#") || strings.HasPrefix(x, "//") || strings.HasPrefix(x, ";") || strings.Contains(x, "/*") {
+		if strings.HasPrefix(x, "#") || strings.HasPrefix(x, "//") || strings.HasPrefix(x, ";") || blockComment.MatchString(x) {
 			t.Errorf("%s has a comment line %q", name, line)
 		}
 	}
