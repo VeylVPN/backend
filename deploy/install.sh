@@ -3,10 +3,11 @@ set -euo pipefail
 
 [ "$(id -u)" -eq 0 ] || { echo "run as root"; exit 1; }
 
-ENDPOINT="${1:-}"
+HOST="${1:-}"
 STATIC_DIR="${2:-}"
-[ -n "$ENDPOINT" ] || { echo "usage: install.sh <public-ip-or-domain>[:51820] [static-dir]"; exit 1; }
-case "$ENDPOINT" in *:*) ;; *) ENDPOINT="$ENDPOINT:51820" ;; esac
+[ -n "$HOST" ] || { echo "usage: install.sh <domain-or-public-ip> [frontend-dist]"; exit 1; }
+ENDPOINT="$HOST:51820"
+if echo "$HOST" | grep -Eq '^[0-9.]+$|:'; then USE_TLS=0; else USE_TLS=1; fi
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(dirname "$HERE")"
@@ -14,6 +15,7 @@ WAN="$(ip -o -4 route show to default | awk '{print $5; exit}')"
 
 apt-get update -y
 DEBIAN_FRONTEND=noninteractive apt-get install -y wireguard-tools nftables unbound golang-go ca-certificates
+if [ "$USE_TLS" -eq 1 ]; then DEBIAN_FRONTEND=noninteractive apt-get install -y caddy; fi
 
 ( cd "$ROOT" && go build -trimpath -ldflags="-s -w" -o /usr/local/bin/veyld ./cmd/veyld )
 
@@ -102,9 +104,30 @@ if [ -n "$STATIC_DIR" ]; then
   cp -r "$STATIC_DIR"/. /opt/veyl/web/
 fi
 
+if [ "$USE_TLS" -eq 1 ]; then
+  LISTEN="127.0.0.1:8080"
+  cat > /etc/caddy/Caddyfile <<CADDY
+{
+  admin off
+  log {
+    output discard
+  }
+}
+
+$HOST {
+  reverse_proxy 127.0.0.1:8080
+}
+CADDY
+  systemctl enable caddy
+  systemctl restart caddy
+else
+  LISTEN="0.0.0.0:80"
+  echo "No domain given: the API is served over plain HTTP. Use a domain for HTTPS."
+fi
+
 cat > /etc/veyl/env <<ENVF
 VEYL_ENDPOINT=$ENDPOINT
-VEYL_LISTEN=0.0.0.0:80
+VEYL_LISTEN=$LISTEN
 VEYL_STATIC=/opt/veyl/web
 ENVF
 chmod 600 /etc/veyl/env
