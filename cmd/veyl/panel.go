@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"os/user"
+	"runtime"
 	"sort"
 	"strconv"
 	"syscall"
@@ -118,6 +119,9 @@ func panelInstallMain(args []string) int {
 	ip := fs.String("ip", "", "")
 	if err := fs.Parse(args); err != nil {
 		return 2
+	}
+	if runtime.GOOS == "windows" {
+		return fail(errors.New("automatic Veyl Control install is not available on Windows yet; register the service with: sc.exe create VeylPanel binPath= \"C:\\Program Files\\Veyl\\veyl.exe service panel serve\" start= delayed-auto"))
 	}
 	if err := needRoot(); err != nil {
 		return fail(err)

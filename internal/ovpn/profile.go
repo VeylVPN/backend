@@ -15,12 +15,13 @@ const DataCiphers = "AES-256-GCM:CHACHA20-POLY1305:AES-128-GCM"
 var ErrProfile = errors.New("invalid profile parameters")
 
 type Params struct {
-	Host       string
-	UDPPort    int
-	Stealth    bool
-	CA         []byte
-	Cert       []byte
-	TLSCryptV2 []byte
+	Host        string
+	UDPPort     int
+	Stealth     bool
+	StealthPort int
+	CA          []byte
+	Cert        []byte
+	TLSCryptV2  []byte
 }
 
 func block(name string, body []byte) (string, bool) {
@@ -41,7 +42,14 @@ func Profile(p Params) (string, error) {
 	sb.WriteString("nobind\n")
 	sb.WriteString("remote " + p.Host + " " + strconv.Itoa(p.UDPPort) + " udp\n")
 	if p.Stealth {
-		sb.WriteString("remote " + p.Host + " " + strconv.Itoa(config.StealthPort) + " tcp-client\n")
+		port := p.StealthPort
+		if port == 0 {
+			port = config.StealthPort
+		}
+		if port < 1 || port > 65535 {
+			return "", ErrProfile
+		}
+		sb.WriteString("remote " + p.Host + " " + strconv.Itoa(port) + " tcp-client\n")
 	}
 	sb.WriteString("connect-retry 2 5\n")
 	sb.WriteString("server-poll-timeout 4\n")

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -161,7 +162,7 @@ func TestPersistence(t *testing.T) {
 	n, _ := s.NewAccount()
 	_ = s.Claim(n, "correct horse")
 	fi, err := os.Stat(p)
-	if err != nil || fi.Mode().Perm() != 0o600 {
+	if err != nil || (runtime.GOOS != "windows" && fi.Mode().Perm() != 0o600) {
 		t.Fatalf("mode %v %v", fi, err)
 	}
 	s2, err := Open(p)

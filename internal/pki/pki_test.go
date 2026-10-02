@@ -10,6 +10,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -37,7 +38,7 @@ func TestInitFiles(t *testing.T) {
 	ca, dir := newCA(t)
 	for f, perm := range map[string]os.FileMode{CAKeyFile: 0o600, ServerKeyFile: 0o600, TLSCryptV2File: 0o640} {
 		fi, err := os.Stat(filepath.Join(dir, f))
-		if err != nil || fi.Mode().Perm() != perm {
+		if err != nil || (runtime.GOOS != "windows" && fi.Mode().Perm() != perm) {
 			t.Errorf("%s: %v %v", f, fi, err)
 		}
 	}

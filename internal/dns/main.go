@@ -15,12 +15,13 @@ import (
 	"time"
 
 	"github.com/veylvpn/backend/internal/config"
+	"github.com/veylvpn/backend/internal/winsvc"
 )
 
 const reloadEvery = 60 * time.Second
 
 func Main(args []string) int {
-	return run(context.Background(), args, os.Stderr, nil)
+	return run(winsvc.Context(), args, os.Stderr, nil)
 }
 
 func run(ctx context.Context, args []string, stderr io.Writer, ready func(*Server)) int {

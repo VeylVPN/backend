@@ -302,7 +302,7 @@ func demoSession(t *testing.T, p *Panel) string {
 
 type cookieRecorder struct{ h http.Header }
 
-func (c *cookieRecorder) Header() http.Header       { return c.h }
+func (c *cookieRecorder) Header() http.Header         { return c.h }
 func (c *cookieRecorder) Write(b []byte) (int, error) { return len(b), nil }
 func (c *cookieRecorder) WriteHeader(int)             {}
 
@@ -356,4 +356,3 @@ func TestPanelDemo(t *testing.T) {
 		}
 	}
 }
-

@@ -835,7 +835,8 @@ components:
       description: |
         OpenVPN client configuration. Contains the CA, the device certificate, the per-device
         tls-crypt-v2 client key and the literal __PRIVATE_KEY__ inside <key></key>. Remotes are
-        the UDP port and, when stealth is on, TCP 443.
+        the UDP port and, when stealth is on, the TCP stealth port from /v1/info (443 on Linux,
+        993 by default on Windows).
     DNSCategory:
       type: string
       enum: [ads, trackers, malware, adult, gambling, social]
@@ -861,7 +862,7 @@ components:
           format: date-time
     Info:
       type: object
-      required: [endpoint, port, proto, name, version, registration, device_limit, dns_categories, stealth, post_quantum, app_url]
+      required: [endpoint, port, proto, name, version, registration, device_limit, dns_categories, stealth, post_quantum, app_url, platform]
       properties:
         endpoint:
           type: string
@@ -874,7 +875,7 @@ components:
           const: udp
         stealth_port:
           type: integer
-          description: Present when stealth is on. OpenVPN over TCP on this port.
+          description: Present when stealth is on. OpenVPN over TCP on this port, 443 on Linux and 993 by default on Windows.
         name:
           type: string
         version:
@@ -900,6 +901,10 @@ components:
           description: Hybrid post-quantum key exchange requested by the operator
         app_url:
           type: string
+        platform:
+          type: string
+          enum: [linux, windows]
+          description: Operating system of the server
     Me:
       type: object
       required: [id, created, expires, device_limit, devices, dns_blocking, dns_custom, status]

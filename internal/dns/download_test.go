@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -87,7 +88,7 @@ func TestDownload(t *testing.T) {
 		}
 	}
 	fi, _ := os.Stat(ListPath(dir, config.CatAds))
-	if fi.Mode().Perm() != 0o644 {
+	if runtime.GOOS != "windows" && fi.Mode().Perm() != 0o644 {
 		t.Fatalf("mode %v", fi.Mode().Perm())
 	}
 	for _, c := range []string{config.CatAdult, config.CatGambling, config.CatSocial} {

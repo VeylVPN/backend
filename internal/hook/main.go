@@ -23,9 +23,9 @@ var errMetadata = errors.New("invalid metadata")
 
 func instance() string {
 	switch os.Getenv("dev") {
-	case config.TunUDP:
+	case config.TunUDP, config.TapUDP:
 		return config.InstanceUDP
-	case config.TunTCP:
+	case config.TunTCP, config.TapTCP:
 		return config.InstanceTCP
 	}
 	return ""

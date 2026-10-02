@@ -1,0 +1,8 @@
+Get-NetFirewallRule -Group 'Veyl' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+New-NetFirewallRule -Group 'Veyl' -Name 'Veyl-VPN-UDP' -DisplayName 'Veyl VPN (UDP)' -Direction Inbound -Action Allow -Profile Any -Protocol 'UDP' -LocalPort 1194 | Out-Null
+New-NetFirewallRule -Group 'Veyl' -Name 'Veyl-HTTP' -DisplayName 'Veyl web (HTTP)' -Direction Inbound -Action Allow -Profile Any -Protocol 'TCP' -LocalPort 80 | Out-Null
+New-NetFirewallRule -Group 'Veyl' -Name 'Veyl-HTTPS' -DisplayName 'Veyl web (HTTPS)' -Direction Inbound -Action Allow -Profile Any -Protocol 'TCP' -LocalPort 443 | Out-Null
+New-NetFirewallRule -Group 'Veyl' -Name 'Veyl-DNS-UDP' -DisplayName 'Veyl DNS (VPN clients)' -Direction Inbound -Action Allow -Profile Any -Protocol 'UDP' -LocalPort 53 -RemoteAddress '10.8.0.0/15' -LocalAddress '10.64.0.0/24' | Out-Null
+New-NetFirewallRule -Group 'Veyl' -Name 'Veyl-DNS-TCP' -DisplayName 'Veyl DNS (VPN clients)' -Direction Inbound -Action Allow -Profile Any -Protocol 'TCP' -LocalPort 53 -RemoteAddress '10.8.0.0/15' -LocalAddress '10.64.0.0/24' | Out-Null
+New-NetFirewallRule -Group 'Veyl' -Name 'Veyl-Admin-VPN' -DisplayName 'Veyl admin (VPN only)' -Direction Inbound -Action Allow -Profile Any -Protocol 'TCP' -LocalPort 8081 -RemoteAddress '10.8.0.0/15' -LocalAddress @('10.8.0.1', '10.9.0.1') | Out-Null
+Set-NetFirewallProfile -All -LogAllowed False -LogBlocked False -LogIgnored False

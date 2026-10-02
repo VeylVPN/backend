@@ -245,9 +245,10 @@ func (s *Server) info(w http.ResponseWriter, r *http.Request) {
 		"stealth":        set.Stealth,
 		"post_quantum":   set.PostQuantum,
 		"app_url":        set.AppURL,
+		"platform":       config.Platform,
 	}
 	if set.Stealth {
-		out["stealth_port"] = config.StealthPort
+		out["stealth_port"] = set.StealthTCPPort()
 	}
 	writeJSON(w, http.StatusOK, out)
 }

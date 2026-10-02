@@ -1,7 +1,7 @@
 package render
 
 import (
-	"path/filepath"
+	"path"
 	"strings"
 
 	"github.com/veylvpn/backend/internal/config"
@@ -66,7 +66,7 @@ func Units() []File {
 		{Path: UnitDNS, Data: unit(
 			[]string{"[Unit]", "Description=Veyl DNS filter", "After=network.target " + UnitDNSIf + " " + UnitUnbound, "Requires=" + UnitDNSIf, "Wants=" + UnitUnbound},
 			withSandbox("[Service]", "Type=simple", "User="+config.ServiceUser, "Group="+config.ServiceUser,
-				"ExecStart="+bin+" dns -blocklists "+filepath.Join(data, "blocklists")+" -upstream "+config.UnboundAddr,
+				"ExecStart="+bin+" dns -blocklists "+path.Join(data, "blocklists")+" -upstream "+config.UnboundAddr,
 				"ExecReload=/bin/kill -HUP $MAINPID", "Restart=always", "RestartSec=2",
 				"AmbientCapabilities=CAP_NET_BIND_SERVICE", "CapabilityBoundingSet=CAP_NET_BIND_SERVICE"),
 			[]string{"[Install]", "WantedBy=multi-user.target"},
@@ -104,7 +104,7 @@ func Units() []File {
 		)})
 	}
 	for i := range files {
-		files[i].Path = filepath.Join(UnitDir, files[i].Path)
+		files[i].Path = path.Join(UnitDir, files[i].Path)
 		files[i].Mode = 0o644
 	}
 	return files

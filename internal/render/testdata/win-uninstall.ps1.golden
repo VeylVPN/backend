@@ -1,0 +1,5 @@
+Get-NetFirewallRule -Group 'Veyl' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+Get-NetNat -Name 'Veyl' -ErrorAction SilentlyContinue | Remove-NetNat -Confirm:$false
+foreach ($n in @('Veyl UDP')) {
+  Get-NetIPAddress -InterfaceAlias $n -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object { $_.IPAddress -like '10.64.0.*' } | Remove-NetIPAddress -Confirm:$false
+}

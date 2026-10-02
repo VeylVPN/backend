@@ -1,0 +1,16 @@
+Set-NetIPInterface -InterfaceAlias 'Veyl UDP' -AddressFamily IPv4 -Forwarding Enabled -WeakHostReceive Enabled -WeakHostSend Enabled
+$have = @(Get-NetIPAddress -InterfaceAlias 'Veyl UDP' -AddressFamily IPv4 -ErrorAction SilentlyContinue | ForEach-Object { $_.IPAddress })
+$added = 0
+foreach ($i in 1..64) {
+  $ip = '10.64.0.' + $i
+  if ($have -notcontains $ip) {
+    New-NetIPAddress -InterfaceAlias 'Veyl UDP' -IPAddress $ip -PrefixLength 32 -SkipAsSource $true | Out-Null
+    $added++
+  }
+}
+if ($added -gt 0) {
+  Restart-Service -Name 'VeylDNS' -Force -ErrorAction SilentlyContinue
+} else {
+  Start-Service -Name 'VeylDNS' -ErrorAction SilentlyContinue
+}
+'dns addresses ' + $added

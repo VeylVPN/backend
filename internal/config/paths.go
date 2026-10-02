@@ -1,6 +1,9 @@
 package config
 
-import "path/filepath"
+import (
+	"path"
+	"strings"
+)
 
 const (
 	DataDir      = "/var/lib/veyl"
@@ -37,18 +40,44 @@ type Paths struct {
 }
 
 func DefaultPaths() Paths {
+	if Platform == PlatformWindows {
+		return WindowsPaths()
+	}
+	return LinuxPaths()
+}
+
+func LinuxPaths() Paths {
 	return Paths{Data: DataDir, Run: RunDir}
 }
 
-func (p Paths) Settings() string   { return filepath.Join(p.Data, "settings.json") }
-func (p Paths) State() string      { return filepath.Join(p.Data, "state.json") }
-func (p Paths) Admin() string      { return filepath.Join(p.Data, "admin.json") }
-func (p Paths) SetupToken() string { return filepath.Join(p.Data, "setup-token") }
-func (p Paths) PKI() string        { return p.Data }
-func (p Paths) CRL() string        { return filepath.Join(p.Data, "crl.pem") }
-func (p Paths) Blocklists() string { return filepath.Join(p.Data, "blocklists") }
-func (p Paths) AgentSock() string  { return filepath.Join(p.Run, "agent.sock") }
-func (p Paths) HookSock() string   { return filepath.Join(p.Run, "hook.sock") }
-func (p Paths) Mgmt(instance string) string {
-	return filepath.Join(p.Run, "mgmt-"+instance)
+func WindowsPaths() Paths {
+	return Paths{Data: WinDataDir, Run: WinRunDir}
 }
+
+func Join(base string, elem ...string) string {
+	if strings.Contains(base, `\`) {
+		out := strings.TrimRight(base, `\`)
+		for _, e := range elem {
+			out += `\` + strings.Trim(strings.ReplaceAll(e, "/", `\`), `\`)
+		}
+		return out
+	}
+	return path.Join(append([]string{base}, elem...)...)
+}
+
+func (p Paths) Settings() string   { return Join(p.Data, "settings.json") }
+func (p Paths) State() string      { return Join(p.Data, "state.json") }
+func (p Paths) Admin() string      { return Join(p.Data, "admin.json") }
+func (p Paths) SetupToken() string { return Join(p.Data, "setup-token") }
+func (p Paths) PKI() string        { return p.Data }
+func (p Paths) CRL() string        { return Join(p.Data, "crl.pem") }
+func (p Paths) Blocklists() string { return Join(p.Data, "blocklists") }
+func (p Paths) AgentSock() string  { return Join(p.Run, "agent.sock") }
+func (p Paths) HookSock() string   { return Join(p.Run, "hook.sock") }
+func (p Paths) Mgmt(instance string) string {
+	return Join(p.Run, "mgmt-"+instance)
+}
+func (p Paths) MgmtPassword(instance string) string {
+	return Join(p.Data, "mgmt-"+instance+".pw")
+}
+func (p Paths) Fonts() string { return Join(p.Data, "fonts") }

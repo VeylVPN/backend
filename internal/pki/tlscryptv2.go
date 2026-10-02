@@ -23,7 +23,7 @@ const (
 )
 
 var (
-	OpenVPNBin     = "/usr/sbin/openvpn"
+	OpenVPNBin     = defaultOpenVPNBin
 	OpenVPNTimeout = 20 * time.Second
 	ErrOpenVPN     = errors.New("openvpn key generation failed")
 	ErrMetadata    = errors.New("invalid tls-crypt-v2 metadata")
@@ -33,8 +33,7 @@ func runOpenVPN(args ...string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), OpenVPNTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, OpenVPNBin, args...)
-	cmd.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL=C"}
-	cmd.Dir = "/"
+	cmd.Env, cmd.Dir = openvpnEnv()
 	if err := cmd.Run(); err != nil {
 		return errors.Join(ErrOpenVPN, err)
 	}

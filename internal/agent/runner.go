@@ -34,11 +34,11 @@ func (c *capped) Write(p []byte) (int, error) {
 }
 
 func (ExecRunner) Run(ctx context.Context, name string, args ...string) ([]byte, error) {
-	if name == "" || strings.ContainsAny(name, " \t\n") {
+	if !validCommand(name) {
 		return nil, errors.New("invalid command")
 	}
 	cmd := exec.CommandContext(ctx, name, args...)
-	cmd.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL=C", "LANG=C", "HOME=/tmp", "DEBIAN_FRONTEND=noninteractive", "SYSTEMD_PAGER="}
+	cmd.Env = runnerEnv()
 	var out capped
 	cmd.Stdout = &out
 	cmd.Stderr = &out
@@ -48,6 +48,16 @@ func (ExecRunner) Run(ctx context.Context, name string, args ...string) ([]byte,
 		err = fmt.Errorf("%s timed out: %w", name, ctx.Err())
 	}
 	return out.buf.Bytes(), err
+}
+
+func validCommand(name string) bool {
+	if name == "" || strings.ContainsAny(name, "\t\r\n\x00\"") {
+		return false
+	}
+	if strings.Contains(name, " ") {
+		return len(name) > 3 && name[1] == ':' && name[2] == '\\'
+	}
+	return true
 }
 
 const (

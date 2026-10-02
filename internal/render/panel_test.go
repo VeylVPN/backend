@@ -132,3 +132,14 @@ func TestPanelCaddyAdapts(t *testing.T) {
 		}
 	}
 }
+
+func TestWinPanelService(t *testing.T) {
+	s := WinPanelService()
+	bp, err := s.BinPath()
+	if err != nil || !strings.HasSuffix(bp, " service panel serve") || s.Account() != `NT SERVICE\VeylPanel` {
+		t.Fatal(bp, err)
+	}
+	if _, ok := FindWinService(s.Name); ok {
+		t.Fatal("panel service must not be installed with every node")
+	}
+}

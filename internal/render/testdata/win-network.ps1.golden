@@ -1,0 +1,17 @@
+Set-NetIPInterface -InterfaceIndex 6 -AddressFamily IPv4 -Forwarding Enabled
+foreach ($n in @('Veyl UDP', 'Veyl TCP')) {
+  if (Get-NetIPInterface -InterfaceAlias $n -AddressFamily IPv4 -ErrorAction SilentlyContinue) {
+    Set-NetIPInterface -InterfaceAlias $n -AddressFamily IPv4 -Forwarding Enabled -WeakHostReceive Enabled -WeakHostSend Enabled
+  }
+}
+$nat = Get-NetNat -Name 'Veyl' -ErrorAction SilentlyContinue
+if ($nat -and $nat.InternalIPInterfaceAddressPrefix -ne '10.8.0.0/15') {
+  Remove-NetNat -Name 'Veyl' -Confirm:$false
+  $nat = $null
+}
+if (-not $nat) {
+  New-NetNat -Name 'Veyl' -InternalIPInterfaceAddressPrefix '10.8.0.0/15' | Out-Null
+  'nat created'
+} else {
+  'nat present'
+}

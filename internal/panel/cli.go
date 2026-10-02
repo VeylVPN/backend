@@ -18,6 +18,7 @@ import (
 	"github.com/veylvpn/backend/internal/admin"
 	"github.com/veylvpn/backend/internal/agentapi"
 	"github.com/veylvpn/backend/internal/panelcfg"
+	"github.com/veylvpn/backend/internal/winsvc"
 )
 
 func Paths() panelcfg.Paths {
@@ -61,7 +62,7 @@ func Serve(args []string) int {
 	if err != nil {
 		return fail(err)
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop := signal.NotifyContext(winsvc.Context(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	ln, err := net.Listen("tcp", *listen)
 	if err != nil {

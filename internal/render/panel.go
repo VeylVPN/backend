@@ -15,9 +15,11 @@ type PanelContext struct {
 	Issued      bool
 }
 
-func caddyImport(l *lines) {
+const WinImportGlob = "C:/ProgramData/Veyl/caddy/veyl.d/*.caddy"
+
+func caddyImport(l *lines, glob string) {
 	l.blank()
-	l.add("import %s", panelcfg.ImportGlob)
+	l.add("import %s", glob)
 }
 
 func PanelCaddyfile(email string) (string, error) {
@@ -34,7 +36,7 @@ func PanelCaddyfile(email string) (string, error) {
 	caddyGlobalTail(&l)
 	l.indent = ""
 	l.add("}")
-	caddyImport(&l)
+	caddyImport(&l, panelcfg.ImportGlob)
 	return l.String(), nil
 }
 
@@ -153,4 +155,10 @@ func PanelUnits() []File {
 		files[i].Mode = 0o644
 	}
 	return files
+}
+
+const WinServicePanel = "VeylPanel"
+
+func WinPanelService() WinService {
+	return WinService{Name: WinServicePanel, Display: "Veyl Control", Desc: "Optional Veyl Control fleet panel on 127.0.0.1:8090.", Key: "veyl-panel", Args: []string{"panel", "serve"}, Virtual: true, Optional: true}
 }

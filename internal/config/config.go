@@ -44,6 +44,7 @@ type Settings struct {
 	ACMEEmail    string `json:"acme_email"`
 	UDPPort      int    `json:"udp_port"`
 	Stealth      bool   `json:"stealth"`
+	StealthPort  int    `json:"stealth_port,omitempty"`
 	IPv6         bool   `json:"ipv6"`
 	PostQuantum  bool   `json:"post_quantum"`
 	Registration string `json:"registration"`
@@ -151,6 +152,9 @@ func (s Settings) Validate() error {
 	}
 	if !ValidPort(s.UDPPort) {
 		return ErrPort
+	}
+	if !ValidStealthPort(Platform, s.StealthPort) {
+		return ErrStealthPort
 	}
 	switch s.Registration {
 	case RegClosed, RegInvite, RegOpen:
