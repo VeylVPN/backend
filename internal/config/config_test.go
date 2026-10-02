@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -114,5 +115,33 @@ func TestLiveReloadsAndValidates(t *testing.T) {
 	}
 	if l.Get().UDPPort != 1300 {
 		t.Fatal("did not pick up external change")
+	}
+}
+
+func TestLiveSeesSameSizeChangeWithinOneTick(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "settings.json")
+	l, err := NewLive(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := Defaults()
+	a.UDPPort = 1195
+	if err := Save(p, a); err != nil {
+		t.Fatal(err)
+	}
+	if l.Get().UDPPort != 1195 {
+		t.Fatal("first change missed")
+	}
+	fi, _ := os.Stat(p)
+	b := Defaults()
+	b.UDPPort = 1300
+	if err := Save(p, b); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(p, fi.ModTime(), fi.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	if got := l.Get().UDPPort; got != 1300 {
+		t.Fatalf("same size change with identical mtime missed: %d", got)
 	}
 }
