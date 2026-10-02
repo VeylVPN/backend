@@ -107,12 +107,13 @@ func (h *ACMEHub) handle(ctx context.Context, c net.Conn) {
 		_ = c.SetWriteDeadline(time.Now().Add(10 * time.Second))
 		_ = json.NewEncoder(c).Encode(r)
 	}
-	if !peerIsRoot(c) {
+	root := peerIsRoot(c)
+	_ = c.SetReadDeadline(time.Now().Add(10 * time.Second))
+	line, err := bufio.NewReaderSize(io.LimitReader(c, 4096), 4096).ReadSlice('\n')
+	if !root {
 		reply(panelcfg.HookReply{Message: "forbidden"})
 		return
 	}
-	_ = c.SetReadDeadline(time.Now().Add(10 * time.Second))
-	line, err := bufio.NewReaderSize(io.LimitReader(c, 4096), 4096).ReadSlice('\n')
 	if err != nil {
 		reply(panelcfg.HookReply{Message: "bad request"})
 		return

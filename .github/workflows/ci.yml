@@ -81,7 +81,8 @@ jobs:
         if: runner.os == 'Windows'
         shell: powershell
         run: |
-          $out = & powershell -NoProfile -ExecutionPolicy Bypass -File ./install.ps1 -Domain 'bad domain;calc' 2>&1 | Out-String
+          $ErrorActionPreference = 'Continue'
+          $out = & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File ./install.ps1 -Domain 'bad domain;calc' 2>&1 | Out-String
           if ($LASTEXITCODE -ne 1 -or $out -notmatch 'invalid domain') {
             Write-Host $out
             exit 1
