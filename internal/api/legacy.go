@@ -82,12 +82,13 @@ func (s *Server) enrollDevice(acc store.Account, name, csr string) (store.Device
 		return store.Device{}, "", err
 	}
 	profile, err := ovpn.Profile(ovpn.Params{
-		Host:       set.Host,
-		UDPPort:    set.UDPPort,
-		Stealth:    set.Stealth,
-		CA:         s.d.CA.CertPEM(),
-		Cert:       cert,
-		TLSCryptV2: tc,
+		Host:        set.Host,
+		UDPPort:     set.UDPPort,
+		Stealth:     set.Stealth,
+		StealthPort: set.StealthTCPPort(),
+		CA:          s.d.CA.CertPEM(),
+		Cert:        cert,
+		TLSCryptV2:  tc,
 	})
 	if err != nil {
 		return store.Device{}, "", err

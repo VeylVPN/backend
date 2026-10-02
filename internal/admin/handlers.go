@@ -134,7 +134,7 @@ func (a *Admin) overview(w http.ResponseWriter, r *http.Request) {
 	if j := a.currentJob(); j != nil {
 		job = map[string]any{"running": j.Running(), "kind": j.Kind}
 	}
-	web.JSON(w, http.StatusOK, map[string]any{
+	out := map[string]any{
 		"version":     app.Version,
 		"name":        set.Name,
 		"host":        set.Host,
@@ -149,7 +149,10 @@ func (a *Admin) overview(w http.ResponseWriter, r *http.Request) {
 		"job":         job,
 		"stealth":     set.Stealth,
 		"udp_port":    set.UDPPort,
-	})
+	}
+	out["platform"] = config.Platform
+	out["stealth_port"] = set.StealthTCPPort()
+	web.JSON(w, http.StatusOK, out)
 }
 
 type accountOut struct {
@@ -464,6 +467,7 @@ type SettingsIn struct {
 	ACMEEmail    string   `json:"acme_email"`
 	UDPPort      int      `json:"udp_port"`
 	Stealth      bool     `json:"stealth"`
+	StealthPort  int      `json:"stealth_port"`
 	IPv6         bool     `json:"ipv6"`
 	PostQuantum  bool     `json:"post_quantum"`
 	Registration string   `json:"registration"`
@@ -480,11 +484,11 @@ func settingsOut(s config.Settings) SettingsIn {
 	if d == nil {
 		d = []string{}
 	}
-	return SettingsIn{Name: s.Name, Host: s.Host, TLS: s.TLS, ACMEEmail: s.ACMEEmail, UDPPort: s.UDPPort, Stealth: s.Stealth, IPv6: s.IPv6, PostQuantum: s.PostQuantum, Registration: s.Registration, DeviceLimit: s.DeviceLimit, DNSDefault: d, DNSUpstream: s.DNS.Upstream, AdminVPNOnly: s.AdminVPNOnly, AutoUpdates: s.AutoUpdates, AppURL: s.AppURL}
+	return SettingsIn{Name: s.Name, Host: s.Host, TLS: s.TLS, ACMEEmail: s.ACMEEmail, UDPPort: s.UDPPort, Stealth: s.Stealth, StealthPort: s.StealthTCPPort(), IPv6: s.IPv6, PostQuantum: s.PostQuantum, Registration: s.Registration, DeviceLimit: s.DeviceLimit, DNSDefault: d, DNSUpstream: s.DNS.Upstream, AdminVPNOnly: s.AdminVPNOnly, AutoUpdates: s.AutoUpdates, AppURL: s.AppURL}
 }
 
 func SystemChanged(a, b config.Settings) bool {
-	return a.Host != b.Host || a.TLS != b.TLS || a.ACMEEmail != b.ACMEEmail || a.UDPPort != b.UDPPort || a.Stealth != b.Stealth || a.IPv6 != b.IPv6 || a.PostQuantum != b.PostQuantum || a.DNS.Upstream != b.DNS.Upstream || a.AutoUpdates != b.AutoUpdates
+	return a.Host != b.Host || a.TLS != b.TLS || a.ACMEEmail != b.ACMEEmail || a.UDPPort != b.UDPPort || a.Stealth != b.Stealth || a.StealthTCPPort() != b.StealthTCPPort() || a.IPv6 != b.IPv6 || a.PostQuantum != b.PostQuantum || a.DNS.Upstream != b.DNS.Upstream || a.AutoUpdates != b.AutoUpdates
 }
 
 func PQAvailable(opensslVersion string) bool {
@@ -538,6 +542,7 @@ func (a *Admin) putSettings(w http.ResponseWriter, r *http.Request) {
 	after, err := a.d.Settings.Update(func(s *config.Settings) error {
 		s.Name, s.Host, s.TLS, s.ACMEEmail = in.Name, in.Host, in.TLS, in.ACMEEmail
 		s.UDPPort, s.Stealth, s.IPv6, s.PostQuantum = in.UDPPort, in.Stealth, in.IPv6, in.PostQuantum
+		s.StealthPort = stealthPortIn(in.StealthPort)
 		s.Registration, s.DeviceLimit = in.Registration, in.DeviceLimit
 		s.DNS.Default = config.SortedCategories(in.DNSDefault)
 		s.DNS.Upstream = in.DNSUpstream
@@ -580,6 +585,8 @@ func settingsMessage(err error) string {
 		return "Unknown DNS resolver."
 	case errors.Is(err, config.ErrAppURL):
 		return "The app link must start with https://."
+	case errors.Is(err, config.ErrStealthPort):
+		return "Pick a different stealth port. On Windows any free TCP port works except 53, 80, 443, 5335, 7505, 7506, 8080, 8081 and 8443."
 	}
 	return "Those settings could not be saved."
 }
@@ -744,4 +751,11 @@ func (a *Admin) dnsUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	web.JSON(w, http.StatusAccepted, map[string]bool{"ok": true})
+}
+
+func stealthPortIn(p int) int {
+	if p == 0 || p == config.DefaultStealthPort(config.Platform) {
+		return 0
+	}
+	return p
 }

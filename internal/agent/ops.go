@@ -783,6 +783,7 @@ func (a *Agent) Status(ctx context.Context) (map[string]string, error) {
 	data["openssl"] = ssl
 	data["post_quantum"] = strconv.FormatBool(render.PostQuantumAvailable(render.Facts{OpenSSLVersion: ssl}))
 	data["distro"] = osRelease(a.path("/etc/os-release"))
+	data["platform"] = config.PlatformLinux
 	if b, err := os.ReadFile(a.path("/proc/uptime")); err == nil {
 		if fs := strings.Fields(string(b)); len(fs) > 0 {
 			if v, err := strconv.ParseFloat(fs[0], 64); err == nil {
@@ -869,6 +870,9 @@ func displayAliases(data map[string]string) {
 
 func (a *Agent) Bootstrap(ctx context.Context, emit Emit, domain, email string) error {
 	a.init()
+	if a.Windows {
+		return a.winBootstrap(ctx, emit, domain, email)
+	}
 	if domain != "" || email != "" {
 		if err := step(emit, "address", func() (string, error) { return a.seed(domain, email) }); err != nil {
 			return err
@@ -969,6 +973,9 @@ func (a *Agent) seed(domain, email string) (string, error) {
 
 func (a *Agent) Uninstall(ctx context.Context, emit Emit, purge bool) error {
 	a.init()
+	if a.Windows {
+		return a.winUninstall(ctx, emit, purge)
+	}
 	units := []string{render.UnitVeyl, render.UnitDNS, render.UnitBlocklistsTmr, render.UnitBlocklists, render.UnitOpenVPNUDP, render.UnitOpenVPNTCP, render.UnitDNSIf, render.UnitFirewall}
 	_ = step(emit, "services", func() (string, error) {
 		for _, u := range units {

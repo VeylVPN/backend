@@ -17,6 +17,7 @@ import (
 	"github.com/veylvpn/backend/internal/config"
 	"github.com/veylvpn/backend/internal/hook"
 	"github.com/veylvpn/backend/internal/setup"
+	"github.com/veylvpn/backend/internal/winsvc"
 )
 
 const vpnAdminPort = "8081"
@@ -35,7 +36,7 @@ func serveMain(args []string) int {
 	if serials, err := d.Store.Revoked(); err == nil {
 		_ = d.CA.WriteCRL(d.Paths.CRL(), serials)
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop := signal.NotifyContext(winsvc.Context(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	hs := hook.NewServer(d)

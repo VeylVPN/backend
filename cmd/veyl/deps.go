@@ -45,16 +45,24 @@ func loadDeps() (app.Deps, error) {
 		Settings: live,
 		Store:    st,
 		CA:       ca,
-		Mgmt: &ovpn.Multi{Clients: []*ovpn.Client{
-			{Socket: p.Mgmt(config.InstanceUDP)},
-			{Socket: p.Mgmt(config.InstanceTCP)},
-		}},
-		Agent: agentapi.SocketClient{Path: p.AgentSock()},
+		Mgmt:     &ovpn.Multi{Clients: mgmtClients(p)},
+		Agent:    agentapi.SocketClient{Path: p.AgentSock()},
 	}, nil
 }
 
+func mgmtClients(p config.Paths) []*ovpn.Client {
+	if config.Platform == config.PlatformWindows {
+		out := []*ovpn.Client{}
+		for _, in := range []string{config.InstanceUDP, config.InstanceTCP} {
+			out = append(out, &ovpn.Client{Socket: fmt.Sprintf("%s%s:%d", ovpn.TCPPrefix, config.MgmtHost, config.MgmtPort(in)), PasswordFile: p.MgmtPassword(in)})
+		}
+		return out
+	}
+	return []*ovpn.Client{{Socket: p.Mgmt(config.InstanceUDP)}, {Socket: p.Mgmt(config.InstanceTCP)}}
+}
+
 func asService() error {
-	if os.Geteuid() != 0 {
+	if !privdrop.Elevated() || config.Platform == config.PlatformWindows {
 		return nil
 	}
 	if err := privdrop.To(config.ServiceUser); err != nil {
