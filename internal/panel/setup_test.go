@@ -85,7 +85,11 @@ func TestSetupWizardFlow(t *testing.T) {
 		t.Fatal(code, out)
 	}
 	s, _ := panelcfg.LoadSite(h.paths.Site())
-	if s.Domain != "control.example.com" || s.Mode != panelcfg.ModeHTTP || s.PublicIP != "203.0.113.10" {
+	wantMode := panelcfg.ModeHTTP
+	if h.p.opt.Platform == "windows" {
+		wantMode = panelcfg.ModeCaddy
+	}
+	if s.Domain != "control.example.com" || s.Mode != wantMode || s.PublicIP != "203.0.113.10" {
 		t.Fatal(s)
 	}
 	code, out := c.do("GET", "/api/setup/records?host=control.example.com", nil)
@@ -150,6 +154,9 @@ func TestSetupOwnerNeedsHTTPS(t *testing.T) {
 }
 
 func TestACMEDNSHandshake(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("certbot runs on linux only")
+	}
 	w := recordstest.NewWorld(t, "example.com", func() *records.Client { return &records.Client{Timeout: 500 * time.Millisecond} })
 	h := newHarness(t, func(o *Options) { o.Checker = w.Checker })
 	if err := panelcfg.SaveSite(h.paths.Site(), panelcfg.Site{Domain: "control.example.com", Email: "ops@example.com", Mode: panelcfg.ModeDNS}); err != nil {
@@ -248,6 +255,9 @@ func TestACMEHookRejectsOtherUsers(t *testing.T) {
 }
 
 func TestFakeCertbotDNSFlow(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("certbot runs on linux only")
+	}
 	if os.Getenv("VEYL_HOOK_HELPER") == "1" {
 		return
 	}
