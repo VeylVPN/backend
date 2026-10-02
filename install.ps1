@@ -446,6 +446,7 @@ function Get-PublicIP {
 				return $ip
 			}
 		} catch {
+			$ip = ''
 		}
 	}
 	$addr = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object { $_.IPAddress -notmatch '^(127\.|169\.254\.|10\.8\.|10\.9\.|10\.64\.)' } | Select-Object -First 1
