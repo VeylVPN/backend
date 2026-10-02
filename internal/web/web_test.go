@@ -85,7 +85,7 @@ func TestAssetsHaveNoCommentsOrInlineCode(t *testing.T) {
 
 func TestPagesServeTypesAndCSP(t *testing.T) {
 	p := NewPages("/setup", "setup.html")
-	cases := map[string]string{"/setup": "text/html", "/setup/": "text/html", "/setup/setup.js": "text/javascript", "/setup/ui.js": "text/javascript", "/setup/app.css": "text/css", "/setup/favicon.svg": "image/svg+xml"}
+	cases := map[string]string{"/setup": "text/html", "/setup/": "text/html", "/setup/setup.js": "text/javascript", "/setup/brand.js": "text/javascript", "/setup/brand.css": "text/css", "/setup/favicon.svg": "image/svg+xml", "/setup/mark.svg": "image/svg+xml", "/setup/wordmark.svg": "image/svg+xml"}
 	for path, ct := range cases {
 		rec := httptest.NewRecorder()
 		p.ServeHTTP(rec, httptest.NewRequest("GET", path, nil))
@@ -96,7 +96,7 @@ func TestPagesServeTypesAndCSP(t *testing.T) {
 			t.Fatal("headers", path)
 		}
 	}
-	for _, path := range []string{"/setup/admin.html", "/setup/../go.mod", "/setup/x/ui.js", "/setup/.hidden", "/setup/missing.js", "/elsewhere"} {
+	for _, path := range []string{"/setup/admin.html", "/setup/../go.mod", "/setup/x/brand.js", "/setup/.hidden", "/setup/missing.js", "/elsewhere"} {
 		rec := httptest.NewRecorder()
 		p.ServeHTTP(rec, httptest.NewRequest("GET", path, nil))
 		if rec.Code != 404 {
@@ -109,9 +109,9 @@ func TestPagesServeTypesAndCSP(t *testing.T) {
 		t.Fatal(rec.Code)
 	}
 	rec = httptest.NewRecorder()
-	p.ServeHTTP(rec, httptest.NewRequest("GET", "/setup/app.css", nil))
+	p.ServeHTTP(rec, httptest.NewRequest("GET", "/setup/brand.css", nil))
 	tag := rec.Header().Get("ETag")
-	req := httptest.NewRequest("GET", "/setup/app.css", nil)
+	req := httptest.NewRequest("GET", "/setup/brand.css", nil)
 	req.Header.Set("If-None-Match", tag)
 	rec = httptest.NewRecorder()
 	p.ServeHTTP(rec, req)
@@ -128,6 +128,9 @@ func TestPagesReferenceOnlyLocalAssets(t *testing.T) {
 		b, _ := fs.ReadFile(Assets(), page)
 		for _, m := range regexp.MustCompile(`(?:src|href)="([^"]+)"`).FindAllSubmatch(b, -1) {
 			ref := string(m[1])
+			if strings.HasPrefix(ref, "#") || ref == "/setup" || ref == "/admin" {
+				continue
+			}
 			if !strings.HasPrefix(ref, "/setup/") && !strings.HasPrefix(ref, "/admin/") {
 				t.Fatal(page, ref)
 			}

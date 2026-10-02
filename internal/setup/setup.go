@@ -150,9 +150,11 @@ var graceRoutes = map[string]bool{
 	"POST /v1/setup/backup":   true,
 	"HEAD /setup":             true,
 	"GET /setup/":             true,
-	"GET /setup/app.css":      true,
-	"GET /setup/ui.js":        true,
+	"GET /setup/brand.css":    true,
+	"GET /setup/brand.js":     true,
 	"GET /setup/setup.js":     true,
+	"GET /setup/mark.svg":     true,
+	"GET /setup/wordmark.svg": true,
 	"GET /setup/favicon.svg":  true,
 	"HEAD /setup/favicon.svg": true,
 }

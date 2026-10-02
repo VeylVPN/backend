@@ -16,6 +16,7 @@ import (
 	"github.com/veylvpn/backend/internal/config"
 	"github.com/veylvpn/backend/internal/pki"
 	"github.com/veylvpn/backend/internal/render"
+	"github.com/veylvpn/backend/internal/web"
 )
 
 type fileOut struct {
@@ -390,6 +391,30 @@ func (a *Agent) stepBlocklists(ctx context.Context, force bool) (string, map[str
 	return detail, counts, nil
 }
 
+func (a *Agent) stepFonts(ctx context.Context) (string, error) {
+	dst := web.FontPath(a.Paths.Data)
+	if b, err := os.ReadFile(a.path(dst)); err == nil && web.FontOK(b) {
+		return "present", nil
+	}
+	fetch := a.Font
+	if fetch == nil {
+		fetch = web.FetchFont
+	}
+	c, cancel := context.WithTimeout(ctx, 45*time.Second)
+	defer cancel()
+	b, err := fetch(c, a.HTTP)
+	if err != nil {
+		return "", skip("font download failed, the interface uses the system font: %v", err)
+	}
+	if err := a.ensureDir(web.FontDir(a.Paths.Data), 0o755, 0, 0); err != nil {
+		return "", skip("could not create the font folder: %v", err)
+	}
+	if _, err := a.txn().put(dst, string(b), 0o644); err != nil {
+		return "", skip("could not save the font: %v", err)
+	}
+	return web.FontFile, nil
+}
+
 func (a *Agent) saveCaddyOrig() error {
 	orig := render.CaddyFile + ".veyl-orig"
 	if a.exists(orig) || !a.exists(render.CaddyFile) {
@@ -648,6 +673,7 @@ func (a *Agent) Apply(ctx context.Context, emit Emit) error {
 		}},
 		{"users", func() (string, error) { return a.stepUsers(ctx) }},
 		{"directories", func() (string, error) { return a.stepDirs(ctx) }},
+		{"fonts", func() (string, error) { return a.stepFonts(ctx) }},
 		{"certificates", func() (string, error) { return a.stepPKI(ctx) }},
 		{"units", func() (string, error) { return a.stepUnits(ctx) }},
 		{"kernel", func() (string, error) { return a.stepSysctl(ctx, f) }},
@@ -896,6 +922,7 @@ func (a *Agent) Bootstrap(ctx context.Context, emit Emit, domain, email string) 
 		}},
 		{"users", func() (string, error) { return a.stepUsers(ctx) }},
 		{"directories", func() (string, error) { return a.stepDirs(ctx) }},
+		{"fonts", func() (string, error) { return a.stepFonts(ctx) }},
 		{"certificates", func() (string, error) { return a.stepPKI(ctx) }},
 		{"units", func() (string, error) { return a.stepUnits(ctx) }},
 		{"kernel", func() (string, error) { return a.stepSysctl(ctx, f) }},
