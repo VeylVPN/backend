@@ -7,11 +7,13 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/veylvpn/backend/internal/api"
+	"github.com/veylvpn/backend/internal/ovpn"
+	"github.com/veylvpn/backend/internal/pki"
 	"github.com/veylvpn/backend/internal/store"
-	"github.com/veylvpn/backend/internal/wg"
 )
 
 func env(k, d string) string {
@@ -21,53 +23,65 @@ func env(k, d string) string {
 	return d
 }
 
+func die(msg string) {
+	fmt.Fprintln(os.Stderr, msg)
+	os.Exit(1)
+}
+
 func main() {
 	log.SetOutput(io.Discard)
-	data := flag.String("data", env("VEYL_DATA", "/var/lib/veyl/state.json"), "")
-	iface := flag.String("iface", env("VEYL_IFACE", "wg0"), "")
+	data := flag.String("data", env("VEYL_DATA", "/var/lib/veyl"), "")
 	listen := flag.String("listen", env("VEYL_LISTEN", "127.0.0.1:8080"), "")
 	endpoint := flag.String("endpoint", env("VEYL_ENDPOINT", ""), "")
 	static := flag.String("static", env("VEYL_STATIC", ""), "")
-	origin := flag.String("origin", env("VEYL_ORIGIN", ""), "")
+	mgmt := flag.String("mgmt", env("VEYL_MGMT", "/run/veyl/mgmt"), "")
 	flag.Parse()
 
-	st, err := store.Open(*data, 5, 250)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "state:", err)
-		os.Exit(1)
-	}
-	m := wg.Manager{Iface: *iface, Prefix: "10.66.0", Prefix6: "fd66:66:66::"}
-
 	args := flag.Args()
+	if len(args) > 0 && args[0] == "init" {
+		dir := *data
+		if len(args) > 1 {
+			dir = args[1]
+		}
+		if _, err := pki.Init(dir); err != nil {
+			die("init failed")
+		}
+		return
+	}
+
+	st, err := store.Open(filepath.Join(*data, "state.json"))
+	if err != nil {
+		die("state unavailable")
+	}
+	ca, err := pki.Init(*data)
+	if err != nil {
+		die("pki unavailable")
+	}
+	crl := filepath.Join(*data, pki.CRLFile)
+	m := &ovpn.Client{Socket: *mgmt}
+
 	if len(args) > 0 {
-		cli(st, m, args)
+		cli(st, ca, m, crl, args)
 		return
 	}
 
 	if *endpoint == "" {
-		fmt.Fprintln(os.Stderr, "endpoint required")
-		os.Exit(1)
+		die("endpoint required")
 	}
-	pub, err := m.ServerPublicKey()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "wireguard interface unavailable")
-		os.Exit(1)
-	}
-	for _, d := range st.All() {
-		_ = m.AddPeer(d.PublicKey, d.Index)
+	if serials, err := st.Revoked(); err == nil {
+		_ = ca.WriteCRL(crl, serials)
 	}
 	cfg := api.Config{
-		Endpoint:  *endpoint,
-		DNS4:      "10.66.0.1",
-		DNS6:      "fd66:66:66::1",
-		StaticDir: *static,
-		Origin:    *origin,
+		Endpoint:         *endpoint,
+		Port:             1194,
+		Proto:            "udp",
+		StaticDir:        *static,
+		CRLPath:          crl,
+		OpenRegistration: os.Getenv("VEYL_OPEN_REGISTRATION") == "1",
 	}
-	stop := make(chan struct{})
-	go api.Scrubber(m, st, time.Minute, 10*time.Minute, stop)
 	srv := &http.Server{
 		Addr:              *listen,
-		Handler:           api.New(cfg, st, m, pub).Handler(),
+		Handler:           api.New(cfg, st, ca, m).Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      10 * time.Second,
@@ -78,31 +92,31 @@ func main() {
 	}
 }
 
-func cli(st *store.Store, m wg.Manager, args []string) {
-	switch args[0] {
-	case "account":
-		if len(args) > 1 && args[1] == "new" {
+func cli(st *store.Store, ca *pki.CA, m *ovpn.Client, crl string, args []string) {
+	if args[0] == "account" && len(args) > 1 {
+		switch {
+		case args[1] == "new":
 			n, err := st.NewAccount()
 			if err != nil {
-				fmt.Fprintln(os.Stderr, err)
-				os.Exit(1)
+				die("failed")
 			}
 			fmt.Println(n)
 			return
-		}
-		if len(args) > 2 && args[1] == "delete" {
+		case args[1] == "delete" && len(args) > 2:
 			devs, err := st.DeleteAccount(args[2])
 			if err != nil {
-				fmt.Fprintln(os.Stderr, err)
-				os.Exit(1)
+				die(err.Error())
+			}
+			if serials, err := st.Revoked(); err == nil {
+				_ = ca.WriteCRL(crl, serials)
 			}
 			for _, d := range devs {
-				_ = m.RemovePeer(d.PublicKey)
+				_ = m.Kill(d.ID)
 			}
 			fmt.Println("deleted")
 			return
 		}
 	}
-	fmt.Fprintln(os.Stderr, "usage: veyld [account new | account delete <number>]")
+	fmt.Fprintln(os.Stderr, "usage: veyld [init [dir] | account new | account delete <number>]")
 	os.Exit(2)
 }
