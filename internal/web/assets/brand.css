@@ -738,15 +738,11 @@ ol {
   width: 2rem;
   height: 2rem;
   flex-shrink: 0;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--line-2);
-  background: var(--ink-850);
-  box-shadow: 0 0 24px -6px rgb(113 92 255 / 0.6);
 }
 
 .brand-logo-tile img,
 .brand-logo-tile svg {
-  width: 18px;
+  width: 24px;
   height: auto;
 }
 
