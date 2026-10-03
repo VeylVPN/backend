@@ -195,6 +195,9 @@ func TestCaddyGolden(t *testing.T) {
 	s.ACMEEmail = "admin@example.com"
 	golden(t, "Caddyfile-stealth", must(Caddyfile(s, true)))
 	golden(t, "Caddyfile-direct", must(Caddyfile(s, false)))
+	s.Configured = false
+	golden(t, "Caddyfile-setup-stealth", must(Caddyfile(s, true)))
+	golden(t, "Caddyfile-setup-direct", must(Caddyfile(s, false)))
 	s = settings()
 	s.Host = "203.0.113.7"
 	s.TLS = config.TLSInternal

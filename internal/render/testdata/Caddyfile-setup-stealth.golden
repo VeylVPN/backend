@@ -1,5 +1,6 @@
 {
 	admin off
+	email admin@example.com
 	https_port 8443
 	default_bind 127.0.0.1
 	auto_https disable_redirects
@@ -13,17 +14,10 @@
 
 http:// {
 	bind 0.0.0.0 [::]
-	@setup path /setup /setup/* /v1/setup/* /assets/fonts/*
-	handle @setup {
-		reverse_proxy 127.0.0.1:8080
-	}
-	handle {
-		redir https://{host}{uri} 308
-	}
+	reverse_proxy 127.0.0.1:8080
 }
 
-203.0.113.7 {
-	tls internal
+vpn.example.com {
 	encode zstd gzip
 	reverse_proxy 127.0.0.1:8080 {
 		header_up X-Forwarded-Proto https

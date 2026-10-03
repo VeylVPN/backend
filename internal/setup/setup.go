@@ -584,14 +584,6 @@ func (w *Wizard) progress(rw http.ResponseWriter, r *http.Request) {
 	j.ServeSSE(rw, r)
 }
 
-func needSecure(rw http.ResponseWriter, r *http.Request) bool {
-	if web.Secure(r) {
-		return true
-	}
-	web.Error(rw, http.StatusForbidden, "INSECURE", "For your safety this step only works over the secure https link.")
-	return false
-}
-
 type settingsIn struct {
 	Name         *string   `json:"name"`
 	Stealth      *bool     `json:"stealth"`
@@ -697,9 +689,6 @@ type passwordIn struct {
 }
 
 func (w *Wizard) adminPassword(rw http.ResponseWriter, r *http.Request) {
-	if !needSecure(rw, r) {
-		return
-	}
 	var in passwordIn
 	if !web.Decode(rw, r, &in, bodyLimit) {
 		return
@@ -721,9 +710,6 @@ type accountIn struct {
 }
 
 func (w *Wizard) account(rw http.ResponseWriter, r *http.Request) {
-	if !needSecure(rw, r) {
-		return
-	}
 	var in accountIn
 	if !web.Decode(rw, r, &in, bodyLimit) {
 		return
@@ -771,9 +757,6 @@ func (w *Wizard) account(rw http.ResponseWriter, r *http.Request) {
 func ptr[T any](v T) *T { return &v }
 
 func (w *Wizard) restoreBackup(rw http.ResponseWriter, r *http.Request) {
-	if !needSecure(rw, r) {
-		return
-	}
 	if w.busy() {
 		web.Error(rw, http.StatusConflict, "BUSY", "Please wait for the current step to finish.")
 		return
@@ -832,9 +815,6 @@ func (w *Wizard) restoreBackup(rw http.ResponseWriter, r *http.Request) {
 }
 
 func (w *Wizard) apply(rw http.ResponseWriter, r *http.Request) {
-	if !needSecure(rw, r) {
-		return
-	}
 	set := w.d.Settings.Get()
 	if set.Host == "" {
 		web.Error(rw, http.StatusBadRequest, "NO_HOST", "Choose an address first.")

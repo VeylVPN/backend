@@ -14,7 +14,13 @@
 
 http:// {
 	bind 0.0.0.0 [::]
-	redir https://{host}{uri} 308
+	@setup path /setup /setup/* /v1/setup/* /assets/fonts/*
+	handle @setup {
+		reverse_proxy 127.0.0.1:8080
+	}
+	handle {
+		redir https://{host}{uri} 308
+	}
 }
 
 vpn.example.com {

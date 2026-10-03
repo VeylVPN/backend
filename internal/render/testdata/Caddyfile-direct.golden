@@ -1,11 +1,22 @@
 {
 	admin off
 	email admin@example.com
+	auto_https disable_redirects
 	log default {
 		output discard
 	}
 	servers {
 		protocols h1 h2
+	}
+}
+
+http:// {
+	@setup path /setup /setup/* /v1/setup/* /assets/fonts/*
+	handle @setup {
+		reverse_proxy 127.0.0.1:8080
+	}
+	handle {
+		redir https://{host}{uri} 308
 	}
 }
 

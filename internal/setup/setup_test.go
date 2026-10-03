@@ -319,16 +319,12 @@ func TestSecureStreamsRedirect(t *testing.T) {
 	}
 }
 
-func TestSensitiveStepsNeedHTTPS(t *testing.T) {
+func TestSetupWorksOverPlainHTTP(t *testing.T) {
 	e := newEnv(t)
 	e.open()
-	for _, path := range []string{"/v1/setup/admin", "/v1/setup/account", "/v1/setup/apply"} {
-		if res, _ := e.do("POST", path, map[string]string{"password": "a-long-enough-password"}, nil); res.StatusCode != 403 {
-			t.Fatal(path, res.StatusCode)
-		}
-	}
-	if res, _ := e.do("POST", "/v1/setup/admin", map[string]string{"password": "a-long-enough-password"}, map[string]string{"X-Forwarded-Proto": "https", "X-Forwarded-For": "1.2.3.4"}); res.StatusCode != 200 {
-		t.Fatal("https via proxy rejected", res.StatusCode)
+	e.https = false
+	if res, out := e.do("POST", "/v1/setup/admin", map[string]string{"password": "a-long-enough-password"}, nil); res.StatusCode != 200 {
+		t.Fatal("plain http rejected", res.StatusCode, out)
 	}
 	if !admin.Exists(e.d.Paths) {
 		t.Fatal("admin not saved")
@@ -466,10 +462,6 @@ func TestRestorePath(t *testing.T) {
 	e := newEnv(t)
 	e.open()
 	e.do("POST", "/v1/setup/address", map[string]any{"mode": "free", "restore": true}, nil)
-	if r, _ := e.do("POST", "/v1/setup/restore", data, map[string]string{PassHeader: base64.RawURLEncoding.EncodeToString([]byte("backup-passphrase"))}); r.StatusCode != 403 {
-		t.Fatal("restore over http", r.StatusCode)
-	}
-	e.https = true
 	if r, _ := e.do("POST", "/v1/setup/restore", data, map[string]string{PassHeader: base64.RawURLEncoding.EncodeToString([]byte("wrong-passphrase"))}); r.StatusCode != 400 {
 		t.Fatal("wrong passphrase", r.StatusCode)
 	}

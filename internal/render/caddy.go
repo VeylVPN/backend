@@ -34,17 +34,33 @@ func caddyfile(s config.Settings, stealth bool, glob string) (string, error) {
 	if stealth {
 		l.add("https_port %d", config.CaddyTLSPort)
 		l.add("default_bind 127.0.0.1")
-		l.add("auto_https disable_redirects")
 	}
+	l.add("auto_https disable_redirects")
 	caddyGlobalTail(&l)
 	l.indent = ""
 	l.add("}")
 	l.blank()
-	if stealth {
+	{
 		l.add("http:// {")
 		l.indent = "\t"
-		l.add("bind 0.0.0.0 [::]")
-		l.add("redir https://{host}{uri} 308")
+		if stealth {
+			l.add("bind 0.0.0.0 [::]")
+		}
+		if s.Configured {
+			l.add("@setup path /setup /setup/* /v1/setup/* /assets/fonts/*")
+			l.add("handle @setup {")
+			l.indent = "\t\t"
+			l.add("reverse_proxy %s", config.WebListen)
+			l.indent = "\t"
+			l.add("}")
+			l.add("handle {")
+			l.indent = "\t\t"
+			l.add("redir https://{host}{uri} 308")
+			l.indent = "\t"
+			l.add("}")
+		} else {
+			l.add("reverse_proxy %s", config.WebListen)
+		}
 		l.indent = ""
 		l.add("}")
 		l.blank()

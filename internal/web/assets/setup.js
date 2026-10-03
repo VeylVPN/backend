@@ -145,12 +145,18 @@
     return { main, head, body, h1 };
   }
 
+  function secured() {
+    if (!st) return false;
+    const job = st.job || {};
+    return !!(draft.secured || st.admin_set || (st.secure && st.on_host) || (job.kind === "tls" && job.done && job.ok));
+  }
+
   function backBtn() {
     const f = flow();
     const i = f.indexOf(current);
     let prev = f[i - 1];
     if (prev === "secure") prev = f[i - 2];
-    if ((prev === "address" || prev === "welcome") && st && st.secure && st.on_host && current !== "secure") return null;
+    if ((prev === "address" || prev === "welcome") && secured() && current !== "secure") return null;
     if (!prev) return null;
     return B.button("Back", { variant: "secondary", size: "lg", icon: "arrowLeft", class: "btn-back", aria: "Back", async: false, onClick: () => go(prev) });
   }
@@ -373,7 +379,7 @@
 
     screen({
       title: ["How will apps find", "your server?"],
-      lead: "Pick an address. It gets a free certificate too, so everything after this step is encrypted.",
+      lead: "Pick an address. It gets a free certificate too, so your apps and admin panel are encrypted.",
       body: [group, detail, more, err],
       actions: [backBtn(), next]
     });
@@ -405,21 +411,19 @@
         if (!r.ok) { B.toast(r.error, "err"); return; }
         STEPS.secure();
       } });
+      const skip = B.button("Skip for now", { variant: "ghost", size: "lg", trailing: "arrowRight", async: false, onClick: () => { draft.secured = true; const f = flow(); go(f[f.indexOf("secure") + 1]); } });
       const change = B.button("Change address", { variant: "ghost", size: "lg", icon: "arrowLeft", async: false, onClick: () => go("address") });
-      clear(actions).append(retry, self, change);
+      clear(actions).append(retry, self, skip, change);
     }
 
     function succeeded(res) {
       bar.done();
       list.settle(true);
-      const url = res && res.result && res.result.redirect;
-      if (!url) { failed("No secure address was returned."); return; }
-      if (!token) {
-        clear(out).append(B.callout("warn", "Secured", "Open " + url + " with your setup link to continue. Run \"" + root("veyl setup-link") + "\" on the server to get it."));
-        return;
-      }
-      clear(out).append(B.callout("ok", "Secured", "Taking you to the secure page."));
-      setTimeout(() => location.replace(url + "#" + encodeURIComponent(token)), 900);
+      draft.secured = true;
+      const f = flow();
+      const next = f[f.indexOf("secure") + 1];
+      clear(out).append(B.callout("ok", "Secured", "Certificate ready. Continuing setup."));
+      setTimeout(() => go(next), 900);
     }
 
     async function run() {
@@ -789,7 +793,7 @@
       STEPS.secure(true);
       return;
     }
-    if (st.secure && st.on_host) {
+    if (secured()) {
       if (mode === "restore") { go(st.restored ? "review" : "restore"); return; }
       go(st.admin_set ? "vpn" : "admin");
       return;
